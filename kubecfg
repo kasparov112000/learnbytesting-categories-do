@@ -1,0 +1,19 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: ${K8_CLUSTER_CERT}
+    server: ${K8_CLUSTER_TARGET}
+  name: ${K8_CLUSTER_NAME}
+contexts:
+- context:
+    cluster: ${K8_CLUSTER_NAME}
+    user: ${K8_USER}
+  name: ${K8_USER}@${K8_CLUSTER_NAME}
+current-context: ${K8_USER}@${K8_CLUSTER_NAME}
+kind: Config
+preferences: {}
+users:
+- name: ${K8_USER}
+  user:
+    client-certificate-data: ${K8_CLIENT_CERT}
+    client-key-data: ${K8_CLIENT_KEY}

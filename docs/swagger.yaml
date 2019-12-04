@@ -1,0 +1,156 @@
+swagger: '2.0'
+info:
+  description: <Please edit your swagger document to add a description here.>
+  version: 1.0.0
+  title: category
+  license:
+    name: Apache 2.0
+    url: 'http://www.apache.org/licenses/LICENSE-2.0.html'
+tags:
+  - name: category
+    description: <Please edit your swagger document to add a description here.>
+    externalDocs:
+      description: Find out more
+      url: 'http://swagger.io'
+paths:
+  /healthcheck:
+    get:
+      tags:
+        - healthcheck
+      summary: Check the health of the application
+      description: ''
+      operationId: healthcheck
+      produces:
+        - application/xml
+        - application/json
+      responses:
+        '200':
+          description: successful operation
+        '405':
+          description: Invalid input
+  /category:
+    get:
+      tags:
+        - category
+      summary: Fetches all resources
+      description: ''
+      operationId: getcategory
+      produces:
+        - application/xml
+        - application/json
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/category'
+        '400':
+          description: Invalid input
+    post:
+      tags:
+        - category
+      summary: Adds a new resource.
+      description: ''
+      operationId: createcategory
+      produces:
+        - application/xml
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Created category object
+          required: true
+          schema:
+            $ref: '#/definitions/category'
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Invalid input
+  '/category/{id}':
+    get:
+      tags:
+        - 'category/{id}'
+      summary: Fetch resource by Id.
+      description: ''
+      operationId: 'getcategory/{id}'
+      produces:
+        - application/xml
+        - application/json
+      parameters:
+        - name: id
+          in: path
+          description: 'The id that needs to be fetched. '
+          required: true
+          type: string
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/category'
+        '405':
+          description: Invalid input
+    put:
+      tags:
+        - 'category/{id}'
+      summary: Updates an existing resource.
+      description: ''
+      operationId: updatecategory
+      produces:
+        - application/xml
+        - application/json
+      parameters:
+        - name: id
+          in: path
+          description: id that need to be updated
+          required: true
+          type: string
+        - in: body
+          name: body
+          description: Updated category object
+          required: true
+          schema:
+            $ref: '#/definitions/category'
+      responses:
+        '200':
+          description: Successfully updated data
+        '400':
+          description: Invalid input
+    delete:
+      tags:
+        - 'category/{id}'
+      summary: Deletes resource by Id.
+      description: ''
+      operationId: category
+      produces:
+        - application/xml
+        - application/json
+      parameters:
+        - name: id
+          in: path
+          description: id that need to be deleted
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successfully deleted data
+        '400':
+          description: Invalid input
+definitions:
+  Healthcheck:
+    type: object
+    properties:
+      message:
+        type: string
+    xml:
+      name: Healthcheck
+  category:
+    type: object
+    properties:
+      name:
+        type: string
+      createdDate:
+        type: string
+      modifiedDate:
+        type: string
+    xml:
+      name: category

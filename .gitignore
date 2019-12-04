@@ -1,0 +1,32 @@
+# dependencies
+node_modules
+dist
+.npmrc
+#!./.ci/.npmrc
+
+# testing
+coverage
+
+# sonar
+?
+.scannerwork
+
+# production
+build
+
+# misc
+.DS_Store   
+.env
+npm-debug.log
+_ignore
+.vscode-upload.json
+docker-compose-tmp*.yml
+vault.*
+.nyc_output
+
+# webstorm
+.idea/
+
+# eclipse
+.project
+.settings/

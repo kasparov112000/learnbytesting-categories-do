@@ -1,0 +1,17 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: categories
+  name: categories
+  namespace: ${NAMESPACE}
+spec:
+  ports:
+  - name: categories
+    port: 80
+    targetPort: service-port
+    protocol: TCP
+  selector:
+    app: categories
+---

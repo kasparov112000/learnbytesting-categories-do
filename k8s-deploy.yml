@@ -1,0 +1,50 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: categories
+  namespace: ${NAMESPACE}
+spec:
+  replicas: ${NUM_REPLICAS}
+  template:
+    metadata:
+      labels:
+        app: categories
+      name: categories
+    spec:
+      imagePullSecrets:
+      - name: ${REGSECRET}
+      containers:
+      - name: categories
+        image: ${BUILD_IMAGE}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+          protocol: TCP
+          name: service-port
+        env:
+        - name: ENV_NAME
+          value: "${DOCKER_TARGETS}"
+        - name: MONGO_HOST
+          value: "${MONGO_HOST}"
+        - name: MONGO_PORT
+          value: "${MONGO_PORT}"
+        - name: MONGO_NAME
+          value: "${CATEGORIES_MONGO_NAME}"
+        - name: MONGO_PASSWORD
+          value: "${MONGO_PASSWORD}"
+        - name: MONGO_USER
+          value: "${MONGO_USER}"
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 3000
+          # will depend on the docker entrypoint
+          initialDelaySeconds: 10
+          # how frequently you want to check
+          periodSeconds: 10
+          # how much latency you want to allow - should be less that periodSeconds
+          timeoutSeconds: 5
+          # After trying N times, pod gets marked as unready
+          failureThreshold: 2
+---
