@@ -14,7 +14,7 @@
         "start:watch": "nodemon src/index.ts --exec ./node_modules/babel-cli/bin/babel-node.js",
         "start:debug-docker": "docker-compose -f 'docker-compose.dev.yml' up -d --build",
         "start:docker-dev": "node --inspect=127.0.0.1:9080 ./index.js",
-        "start:tsnode": "ts-node ./app/server.ts",
+        "start:tsnode": "ts-node ./app/server.ts --debug=7000",
         "start:tsnode:lint": "npm run lint && ts-node ./src/index.ts",
         "test": "jest --coverage --coverageDirectory=output/coverage/jest",
         "test:watch": "npm t -- -w",
@@ -48,7 +48,7 @@
     "dependencies": {
         "@easydevops/openid-middleware": "^1.0.2",
         "@easydevops/pwc-us-agc-logger": "^1.0.0",
-        "@mdr/framework": "^1.3.2",
+        "@mdr/framework": "^1.3.4",
         "@mdr/models": "^1.3.1",
         "@mdr/schemas": "^1.3.1",
         "@types/jest": "^23.3.2",
