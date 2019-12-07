@@ -88,8 +88,8 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       delete req.query.includeAll;
       return;
     }
-
-    const currentUser: MdrApplicationUser = await this.getCurrentUser(req);
-    req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => lineOfService._id) };
+    // TODO: TURN ON WHEN SECURITY IS FIXED.
+    //const currentUser: MdrApplicationUser = await this.getCurrentUser(req);
+    //req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => lineOfService._id) };
   }
 }
