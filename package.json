@@ -1,6 +1,6 @@
 {
     "name": "categories",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "private": true,
     "templatetype": "microservice",
     "templateversion": "1.0.0",
@@ -48,9 +48,9 @@
     "dependencies": {
         "@easydevops/openid-middleware": "^1.0.2",
         "@easydevops/pwc-us-agc-logger": "^1.0.0",
-        "@mdr/framework": "^1.4.0",
-        "@mdr/models": "^1.4.0",
-        "@mdr/schemas": "^1.4.0",
+        "@mdr/framework": "^1.5.0",
+        "@mdr/models": "^1.5.0",
+        "@mdr/schemas": "^1.5.0",
         "@types/jest": "^23.3.2",
         "body-parser": "^1.18.3",
         "deep-equal": "^1.1.0",
