@@ -48,7 +48,7 @@
     "dependencies": {
         "@easydevops/openid-middleware": "^1.0.2",
         "@easydevops/pwc-us-agc-logger": "^1.0.0",
-        "@mdr/framework": "^1.3.5",
+        "@mdr/framework": "^1.4.0",
         "@mdr/models": "^1.4.0",
         "@mdr/schemas": "^1.4.0",
         "@types/jest": "^23.3.2",
