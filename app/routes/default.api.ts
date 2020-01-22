@@ -1,17 +1,13 @@
 export default function (app, express, serviceobject) {
   let router = express.Router();
 
-  /* Initial route for testing!! */
-  router.get('/categories', (req, res) => {
-    serviceobject.get(req, res);
-  });
 
-  router.get('/categories/:id', (req, res) => {
-    serviceobject.getById(req, res);
+  router.post('/categories/:id', (req, res) => {
+    serviceobject.getByLineOfService(req, res);
   });
 
   router.post('/categories', (req, res) => {
-    serviceobject.post(req, res);
+    serviceobject.getByLineOfService(req, res);
   });
 
   router.post('/categories/sync/create', (req, res) => {

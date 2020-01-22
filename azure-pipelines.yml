@@ -9,11 +9,10 @@ trigger:
   batch: true
   branches:
     include:
+    - master
     - release-*
     - refs/tags/dev-release*
   paths:
-    include:
-    - src/services/categories/*
     exclude:
     - azure-pipelines.yml
 

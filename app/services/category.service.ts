@@ -1,4 +1,4 @@
-import { DbMicroServiceBase, Helper } from '@mdr/framework';
+import { DbMicroServiceBase } from '@mdr/framework';
 import { Category, MdrApplicationUser } from '@mdr/models';
 import { ObjectID } from 'mongodb';
 
@@ -7,7 +7,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     super(dbService);
   }
 
-  public async get(req, res) {
+  public async getByLineOfService(req, res) {
     await this.filterLinesOfService(req);
     super.get(req, res);
   }
@@ -22,7 +22,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       if (lineOfServiceIndex !== -1) {
         let lineOfService = linesOfService[lineOfServiceIndex];
         lineOfService = this.getUpdatedCategory(lineOfService, createCategory);
-        await this.updateCategory(lineOfService);
+        await this.updateCategory(lineOfService)
         linesOfService.splice(lineOfServiceIndex, 1);
       } else {
         const newCategory = new Category();
@@ -88,8 +88,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       delete req.query.includeAll;
       return;
     }
-
-    const currentUser: MdrApplicationUser = await this.getCurrentUser(req);
+    const currentUser: MdrApplicationUser = req.body.currentUser as MdrApplicationUser;
     req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => lineOfService._id) };
   }
 }
