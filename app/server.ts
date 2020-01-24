@@ -57,11 +57,6 @@ function databaseConnect() {
   dbService.connect()
     .then(connectionInfo => {
       logger.log('info', `Successfully connected to database!  Connection Info: ${connectionInfo}`);
-
-      bindServices();
-      // Binding the routes file with the service file and
-      // registering the routes.
-      routeBinder(app, express, service);
     }, err => {
       logger.log('error', `Unable to connect to database : ${err}`);
     });
@@ -84,6 +79,10 @@ logger.log('info', `You can view your swagger documentation at <host>:${serviceC
 app.use(express.static('./docs'));
 // Start Server: Main point of entry
 app.listen(serviceConfigs.port, () => {
+  bindServices();
+  // Binding the routes file with the service file and
+  // registering the routes.
+  routeBinder(app, express, service);
   logger.log('info', `Service listening on port ${serviceConfigs.port} in ${serviceConfigs.envName}`, {
     timestamp: Date.now()
   });
