@@ -1,6 +1,7 @@
 import { DbMicroServiceBase } from '@mdr/framework';
 import { Category, MdrApplicationUser } from '@mdr/models';
 import { ObjectID } from 'mongodb';
+import {logger} from '@easydevops/pwc-us-agc-logger';
 
 export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   constructor(dbService) {
@@ -14,21 +15,23 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
 
   public async syncCreateCategories(req, res) {
     const createCategories: Array<Category> = req.body.categories;
-    const linesOfService: Array<Category> = await this.dbService.find({ query: { includeAll: true }, params: {} });
-
+    const linesOfService: Array<Category> = await this.dbService.find(req);
     for (let createCategory of createCategories) {
       let lineOfServiceIndex = linesOfService.findIndex(category => category.createUuid === createCategory.createUuid);
 
       if (lineOfServiceIndex !== -1) {
+        logger.info("Updating category: "+createCategory.name);
         let lineOfService = linesOfService[lineOfServiceIndex];
         lineOfService = this.getUpdatedCategory(lineOfService, createCategory);
         await this.updateCategory(lineOfService)
         linesOfService.splice(lineOfServiceIndex, 1);
       } else {
+        logger.info("Creating new category: "+createCategory.name);
         const newCategory = new Category();
         newCategory.createUuid = createCategory.createUuid;
         await this.dbService.create(this.getUpdatedCategory(newCategory, createCategory));
       }
+
     }
 
     for (let lineOfService of linesOfService) {
