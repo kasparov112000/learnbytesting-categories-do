@@ -39,7 +39,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       await this.updateCategory(lineOfService);
     }
 
-    return this.handleResponse(await this.dbService.find({ query: { includeAll: true }, params: {} }), res);
+    return this.handleResponse(await this.dbService.find({ query: {}, params: {} }), res);
   }
 
   public getUpdatedCategory(category: Category, createCategory: Category): Category {
