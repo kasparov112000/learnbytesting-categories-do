@@ -1,16 +1,19 @@
 import * as path from 'path';
 import { ConnectionConfig } from '@mdr/framework';
 
-const databasePrefix = process.env.DATABASE_NAME_PREFIX || 'mdr-';
+const environment = process.env.ENV_NAME || 'local';
+let database = process.env.MONGO_NAME || 'categories';
+if(environment === 'local'){
+  database = 'mdr-'+database;
+}
+
 const host = process.env.MONGO_HOST || 'localhost';
 const mongoport = process.env.MONGO_PORT || 27017;
-const database = process.env.MONGO_NAME || databasePrefix+'categories';
 const password = process.env.MONGO_PASSWORD || '';
 const username = process.env.MONGO_USER || '';
 const ssl = process.env.MONGO_SSL || false;
 const credentials = username ? `${username}:${encodeURIComponent(password)}@` : '';
 const poolSize = process.env.MONGO_POOL_SIZE ? parseInt(process.env.MONGO_POOL_SIZE, 10) : 100;
-const environment = process.env.ENV_NAME || 'local';
 
 const connection = new ConnectionConfig({
   env: environment,
