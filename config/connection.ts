@@ -1,11 +1,8 @@
 import * as path from 'path';
 import { ConnectionConfig } from '@mdr/framework';
 
-const environment = process.env.ENV_NAME || 'local';
-let database = process.env.MONGO_NAME || 'categories';
-if(environment === 'local'){
-  database = 'mdr-'+database;
-}
+const environment = process.env.ENV_NAME || 'LOCAL';
+let database = process.env.MONGO_NAME || 'mdr-categories';
 
 const host = process.env.MONGO_HOST || 'localhost';
 const mongoport = process.env.MONGO_PORT || 27017;
