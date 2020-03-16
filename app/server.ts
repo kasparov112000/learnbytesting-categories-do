@@ -5,6 +5,8 @@ import * as dotenv from 'dotenv';
 import { logger } from '@easydevops/pwc-us-agc-logger';
 import * as swaggerUi from 'swagger-ui-express';
 import * as yamljs from 'yamljs';
+import * as helmet from 'helmet';
+import * as mongoSanitize from 'express-mongo-sanitize';
 // import * as appdynamics from 'appdynamics';
 import { DbService } from './services/db.service';
 import { serviceConfigs, appDynamicsConfigs } from '../config/global.config';
@@ -20,15 +22,16 @@ let service: CategoryService;
 // Get environment vars
 dotenv.config();
 
-// TODO: Configure appdynamics for each microservice built
-// if (appDynamicsConfigs.enableAppdynamics) {
-//   appdynamics.profile(appDynamicsConfigs.appdynamicsProfile);
-// }
-
 app.use(bodyParser.urlencoded({
   extended: true
 }));
 app.use(bodyParser.json());
+
+app.use(helmet());
+
+app.use(mongoSanitize({
+  replaceWith: '_'
+}))
 
 app.use(morgan(function (tokens, req, res) {
   return [
