@@ -12,8 +12,6 @@ import { DbService } from './services/db.service';
 import { serviceConfigs, appDynamicsConfigs } from '../config/global.config';
 import routeBinder from './lib/router-binder';
 import { CategoryService } from './services/category.service';
-import { Auth } from '@easydevops/openid-middleware';
-import config from '../config/config';
 
 const app = express();
 const dbService = new DbService();
@@ -43,17 +41,6 @@ app.use(morgan(function (tokens, req, res) {
     tokens['response-time'](req, res), 'ms'
   ].join(' ');
 }));
-
-Auth.Configure({
-  discoveryUrl: config.serviceSettings.discoveryUrl,
-  cacheRetriever: (async (key) => {
-    logger.log('Retriever: ', key);
-    return null;
-  }),
-  cacheCallback: (key, data) => {
-    logger.log('Callback: ', key, data);
-  }
-});
 
 function databaseConnect() {
   logger.log('info', 'Attempting to connect to database');
