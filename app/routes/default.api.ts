@@ -1,5 +1,5 @@
 import { logger } from '@quicksuite/commons-logger';
-import { DbService } from 'services/db.service';
+import { DbService } from '../services/db.service';
 
 export default function (app, express, serviceobject) {
   let router = express.Router();
