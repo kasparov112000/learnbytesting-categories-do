@@ -16,7 +16,6 @@ function addChildCategory(categoryModel, category, fieldName) {
 }
 
 
-
 const category = mongoose.model('Categories', CategorySchema);
 
 CategorySchema.pre('save', function (next) {
