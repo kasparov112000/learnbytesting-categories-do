@@ -35,4 +35,16 @@ spec:
           value: "${MONGO_PASSWORD}"
         - name: MONGO_USER
           value: "${MONGO_USER}"
+        readinessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 3000
+          # will depend on the docker entrypoint
+          initialDelaySeconds: 30
+          # how frequently you want to check
+          periodSeconds: 60
+          # how much latency you want to allow - should be less that periodSeconds
+          timeoutSeconds: 5
+          # After trying N times, pod gets marked as unready
+          failureThreshold: 2
 ---
