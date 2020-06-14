@@ -1,10 +1,9 @@
-import { logger } from '@quicksuite/commons-logger';
+import { logger } from 'pwc-us-agc-logger';
 import { DbService } from '../services/db.service';
 
 export default function (app, express, serviceobject) {
   let router = express.Router();
   const dbService = new DbService();
-  // tslint:disable-next-line: no-require-imports
   const status = require('http-status');
 
 

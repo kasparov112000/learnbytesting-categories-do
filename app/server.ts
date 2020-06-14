@@ -2,7 +2,8 @@ import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as morgan from 'morgan';
 import * as dotenv from 'dotenv';
-import { logger } from '@easydevops/pwc-us-agc-logger';
+import { logger } from 'pwc-us-agc-logger';
+
 import * as swaggerUi from 'swagger-ui-express';
 import * as yamljs from 'yamljs';
 import * as helmet from 'helmet';
