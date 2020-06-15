@@ -1,7 +1,8 @@
 import { DbMicroServiceBase } from '@mdr/framework';
 import { Category, MdrApplicationUser } from '@mdr/models';
 import { ObjectID } from 'mongodb';
-import {logger} from '@easydevops/pwc-us-agc-logger';
+import { logger } from 'pwc-us-agc-logger';
+
 
 export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   constructor(dbService) {
