@@ -9,11 +9,11 @@
     "scripts": {
         "build": "tsc --module commonjs",
         "start": "node ./app/server.js",
-        "start:build": "npm run build && node ./build/app/server.js",
+        "start:build": "npm run build && node ./build/index.js",
         "start:dev": "npm-run-all --parallel lint:watch start:watch",
         "start:watch": "ts-node-dev --respawn --transpileOnly ./app/server.ts",
         "start:debug-docker": "docker-compose -f 'docker-compose.dev.yml' up -d --build",
-        "start:docker-dev": "node --inspect=127.0.0.1:9080 ./build/app/server.js",
+        "start:docker-dev": "node --inspect=127.0.0.1:9080 ./index.js",
         "start:tsnode": "ts-node ./app/server.ts --debug=7000",
         "start:tsnode:lint": "npm run lint && ts-node ./src/index.ts",
         "test": "jest --coverage --coverageDirectory=output/coverage/jest",

@@ -1,8 +1,4 @@
 import { logger } from 'pwc-us-agc-logger';
-<<<<<<< HEAD
-
-=======
->>>>>>> release-01
 import { DbService } from '../services/db.service';
 
 export default function (app, express, serviceobject) {
