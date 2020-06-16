@@ -2,14 +2,8 @@
     A Route Loader Module:
     Loads all routes from src/routes folder and bind it with web app.
  */
-
 import { logger } from 'pwc-us-agc-logger';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as _ from 'lodash';
 
-export default function routeBinder(app, express, service) {
-  const pathToRoutes = path.join(__dirname, '..', 'routes');
   let routerBind = undefined;
   let moduleName = undefined;
   try {
