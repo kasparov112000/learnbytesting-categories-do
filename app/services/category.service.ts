@@ -1,7 +1,7 @@
-import { DbMicroServiceBase } from '@mdr/framework';
-import { Category, MdrApplicationUser } from '@mdr/models';
+import { DbMicroServiceBase } from 'hipolito-framework';
+import { Category, MdrApplicationUser } from 'hipolito-models';
 import { ObjectID } from 'mongodb';
-import {logger} from 'pwc-us-agc-logger';
+
 
 export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   constructor(dbService) {
@@ -20,13 +20,13 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       let lineOfServiceIndex = linesOfService.findIndex(category => category.createUuid === createCategory.createUuid);
 
       if (lineOfServiceIndex !== -1) {
-        logger.info("Updating category: "+createCategory.name);
+        console.log("Updating category: "+createCategory.name);
         let lineOfService = linesOfService[lineOfServiceIndex];
         lineOfService = this.getUpdatedCategory(lineOfService, createCategory);
         await this.updateCategory(lineOfService)
         linesOfService.splice(lineOfServiceIndex, 1);
       } else {
-        logger.info("Creating new category: "+createCategory.name);
+        console.log("Creating new category: "+createCategory.name);
         const newCategory = new Category();
         newCategory.createUuid = createCategory.createUuid;
         await this.dbService.create(this.getUpdatedCategory(newCategory, createCategory));

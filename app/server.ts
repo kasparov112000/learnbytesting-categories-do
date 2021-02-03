@@ -2,7 +2,7 @@ import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as morgan from 'morgan';
 import * as dotenv from 'dotenv';
-import { logger } from 'pwc-us-agc-logger';
+
 import * as swaggerUi from 'swagger-ui-express';
 import * as yamljs from 'yamljs';
 import * as helmet from 'helmet';
@@ -43,12 +43,12 @@ app.use(morgan(function (tokens, req, res) {
 }));
 
 function databaseConnect() {
-  logger.log('info', 'Attempting to connect to database');
+  console.log('info', 'Attempting to connect to database');
   dbService.connect()
     .then(connectionInfo => {
-      logger.log('info', `Successfully connected to database!  Connection Info: ${connectionInfo}`);
+      console.log('info', `Successfully connected to database!  Connection Info: ${connectionInfo}`);
     }, err => {
-      logger.log('error', `Unable to connect to database : ${err}`);
+      console.log('error', `Unable to connect to database : ${err}`);
     });
 }
 
@@ -56,7 +56,7 @@ function bindServices() {
   try {
     service = new CategoryService(dbService);
   } catch (err) {
-    logger.log(`Error occurred binding services : ${err}`);
+    console.log(`Error occurred binding services : ${err}`);
   }
 }
 
@@ -64,7 +64,7 @@ function bindServices() {
 const yaml = yamljs;
 const swaggerDocument = yaml.load('./docs/swagger.yaml');
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-logger.log('info', `You can view your swagger documentation at <host>:${serviceConfigs.port}/api-docs`);
+console.log('info', `You can view your swagger documentation at <host>:${serviceConfigs.port}/api-docs`);
 // expose static swagger docs
 app.use(express.static('./docs'));
 // Start Server: Main point of entry
@@ -73,7 +73,7 @@ app.listen(serviceConfigs.port, () => {
   // Binding the routes file with the service file and
   // registering the routes.
   routeBinder(app, express, service);
-  logger.log('info', `Service listening on port ${serviceConfigs.port} in ${serviceConfigs.envName}`, {
+  console.log('info', `Service listening on port ${serviceConfigs.port} in ${serviceConfigs.envName}`, {
     timestamp: Date.now()
   });
 
@@ -82,10 +82,10 @@ app.listen(serviceConfigs.port, () => {
 });
 
 process.on('SIGINT', async () => {
-  logger.log('info', 'exit process');
+  console.log('info', 'exit process');
   if (dbService) {
     await dbService.close();
-    logger.log('info', 'DB is closed');
+    console.log('info', 'DB is closed');
     process.exit();
   }
 });

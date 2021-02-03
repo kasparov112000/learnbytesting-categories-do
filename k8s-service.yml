@@ -5,7 +5,7 @@ metadata:
   labels:
     app: categories
   name: categories
-  namespace: ${NAMESPACE}
+  namespace: learnbytesting
 spec:
   ports:
   - name: categories

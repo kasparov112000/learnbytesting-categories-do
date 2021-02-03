@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { ConnectionConfig } from '@mdr/framework';
+import { ConnectionConfig } from 'hipolito-framework';
 
 const environment = process.env.ENV_NAME || 'LOCAL';
 let database = process.env.MONGO_NAME || 'mdr-categories';

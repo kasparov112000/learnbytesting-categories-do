@@ -1,5 +1,5 @@
 import * as mongoose from 'mongoose';
-import { CategorySchema } from '@mdr/schemas';
+let CategorySchema = new mongoose.Schema;
 
 function addChildCategory(categoryModel, category, fieldName) {
   if (category[fieldName] && category[fieldName].length) {

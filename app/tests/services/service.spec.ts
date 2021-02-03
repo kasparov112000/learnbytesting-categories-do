@@ -1,7 +1,7 @@
 import * as mocha from 'mocha';
 import { assert } from 'chai';
 import { CategoryService } from '../../services/category.service';
-import { Category } from '@mdr/models';
+import { Category } from 'hipolito-models';
 
 describe('Category Service', () => {
 

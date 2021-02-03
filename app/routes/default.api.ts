@@ -1,4 +1,4 @@
-import { logger } from 'pwc-us-agc-logger';
+
 import { DbService } from '../services/db.service';
 
 export default function (app, express, serviceobject) {
@@ -8,7 +8,7 @@ export default function (app, express, serviceobject) {
 
 
   router.get('/pingcategories', (req, res) => {
-    logger.log('info', 'GET Ping Categories', {
+    console.log('info', 'GET Ping Categories', {
       timestamp: Date.now(),
        txnId: req.id
      });
@@ -16,15 +16,15 @@ export default function (app, express, serviceobject) {
   });
 
  app.get('/pingcategoriesdb', (req, res) => {
-  logger.log('info', 'Attempting to ping categories database');
+  console.log('info', 'Attempting to ping categories database');
   dbService.connect()
   .then(connectionInfo => {
     res.status(status.OK).json(`<div><h1>categories service DB is Up and running </h1></div>`);
 
-    logger.log('info', 'Successfully pinged database!  ');
+    console.log('info', 'Successfully pinged database!  ');
   }, err => {
     res.status(status.INTERNAL_SERVER_ERROR).json('<div><h1>categories DB service is down </h1></div>');
-    logger.log('error', `Unable to ping categories database : ${err}`);
+    console.log('error', `Unable to ping categories database : ${err}`);
   });
   dbService.close();
 });
