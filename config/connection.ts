@@ -24,6 +24,7 @@ const connection = new ConnectionConfig({
   options: {
     poolSize: poolSize,
     useNewUrlParser: true,
+    useUnifiedTopology: true
   },
   // options: {
   //   poolSize: poolSize,
