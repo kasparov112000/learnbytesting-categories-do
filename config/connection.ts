@@ -17,6 +17,7 @@ const connection = new ConnectionConfig({
   host: host,
   modelName: 'Categories',
   schemaPath: path.join(__dirname, '..', 'app', 'models'),
+ // dbUrl: 'mongodb+srv://dbAdmin:ramos111@cluster0.tvmkw.mongodb.net/mdr-categories?retryWrites=true&w=majority',
   dbUrl: (process.env.ENV_NAME || 'LOCAL') !== 'LOCAL' ?
     `mongodb+srv://${credentials}${host}/${database}?retryWrites=true` :
     `mongodb://${credentials}${host}:${mongoport}/${database}?ssl=${ssl}`,
@@ -24,6 +25,10 @@ const connection = new ConnectionConfig({
     poolSize: poolSize,
     useNewUrlParser: true,
   },
+  // options: {
+  //   poolSize: poolSize,
+  //   useNewUrlParser: true
+  // }
 });
 
 export { connection };
