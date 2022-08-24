@@ -89,9 +89,9 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     const includeAll = !!req.query.includeAll;
 
     const currentUser: MdrApplicationUser = req.body.currentUser as MdrApplicationUser;
-    const countCategories: number = currentUser.categories.length;
+    const countCategories: number = currentUser?.categories?.length || 0;
    
-    if (includeAll || (countCategories === 0 && !currentUser['active'] )) {
+    if (includeAll || (countCategories === 0 && ( currentUser && !currentUser['active']) )) {
       delete req.query.includeAll;
       return;
     }
