@@ -6,7 +6,7 @@ FROM scratch
 #
 # BUILD
 #
-FROM node:12
+FROM node:14
 WORKDIR /var/app
 
 ADD package.json .
@@ -18,7 +18,7 @@ RUN npm run build
 #
 # UNIT TESTING
 #
-FROM node:12
+FROM node:14
 
 ARG UNIT_TEST=no
 WORKDIR /var/app
@@ -33,7 +33,7 @@ RUN if [ "${UNIT_TEST}" = "yes" ]; then \
 #
 # RUNTIME
 #
-FROM node:12
+FROM node:14
 EXPOSE 3000
 ENV ENV_NAME=${ENV_NAME}
 
