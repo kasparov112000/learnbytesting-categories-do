@@ -93,10 +93,11 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     const countCategories: number = currentUser?.categories?.length || 0;
     console.log('countCategories should be 0', countCategories);
    
-    if (includeAll || (countCategories === 0 && ( currentUser && !currentUser['active']) )) {
+    if (includeAll || (( currentUser && !currentUser['isActive']) )) {
       delete req.query.includeAll;
       return;
     }
     req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => lineOfService._id) };
+
   }
 }
