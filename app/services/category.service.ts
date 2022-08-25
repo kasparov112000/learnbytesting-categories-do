@@ -87,9 +87,11 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
 
   private async filterLinesOfService(req) {
     const includeAll = !!req.query.includeAll;
-
+    console.log('includeAll should be false', includeAll);
     const currentUser: MdrApplicationUser = req.body.currentUser as MdrApplicationUser;
+    console.log('currentUser should have data', currentUser)
     const countCategories: number = currentUser?.categories?.length || 0;
+    console.log('countCategories should be 0', countCategories);
    
     if (includeAll || (countCategories === 0 && ( currentUser && !currentUser['active']) )) {
       delete req.query.includeAll;
