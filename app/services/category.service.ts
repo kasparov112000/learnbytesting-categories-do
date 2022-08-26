@@ -1,4 +1,4 @@
-import { DbMicroServiceBase } from 'hipolito-framework';
+import { DbMicroServiceBase } from './db-micro-service-base';
 import { Category, MdrApplicationUser } from 'hipolito-models';
 import { ObjectID } from 'mongodb';
 
