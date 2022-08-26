@@ -1,6 +1,6 @@
 import { DbMicroServiceBase } from './db-micro-service-base';
 import { Category, MdrApplicationUser } from 'hipolito-models';
-import { ObjectID } from 'mongodb';
+import { ObjectID, ObjectId } from 'mongodb';
 
 
 export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
@@ -97,7 +97,10 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       delete req.query.includeAll;
       return;
     }
-    req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => lineOfService._id) };
+    req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => {
+      return new ObjectId(lineOfService._id)
+    }
+      ) };
 
   }
 }
