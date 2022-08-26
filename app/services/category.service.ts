@@ -97,10 +97,11 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       delete req.query.includeAll;
       return;
     }
-    req.params['_id'] = { '$in': currentUser.categories.map(lineOfService => {
-      return new ObjectId(lineOfService._id)
-    }
-      ) };
+    const idArr = currentUser.categories.map(lineOfService => {
+      const o_id = new ObjectId(lineOfService._id);
+      return o_id;
+    });
+    req.params['_id'] = { '$in':idArr };
 
   }
 }
