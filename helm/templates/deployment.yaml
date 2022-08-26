@@ -41,7 +41,7 @@ spec:
             - name: MONGO_PORT
               value: "27017"
             - name: MONGO_NAME
-              value: "mdr-emails"
+              value: "mdr-categories"
             - name: MONGO_PASSWORD
               value: "ramos111"
             - name: MONGO_USER

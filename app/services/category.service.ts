@@ -101,7 +101,6 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       const o_id = new ObjectId(lineOfService._id);
       return o_id;
     });
-    req.params['_id'] = { '$in':idArr };
-
+    req.params['_id'] = { '$in': idArr };
   }
 }
