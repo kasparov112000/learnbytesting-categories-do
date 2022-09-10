@@ -1,6 +1,6 @@
 import * as mongoose from 'mongoose';
 import { connection } from '../../config/connection';
-import { DbServiceBase } from 'hipolito-framework';
+import { DbServiceBase } from './db-service-base';
 
 export class DbService extends DbServiceBase {
   constructor() {

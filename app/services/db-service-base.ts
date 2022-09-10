@@ -92,8 +92,15 @@ export abstract class DbServiceBase {
 
 
 
-        const result = await this.dbModel
-            .findOneAndUpdate({ _id: new ObjectID(updateRequest.params.id) }, updateRequest.body, { new: true, lean: true });
+        const result = await this.dbModel.findOneAndUpdate({ 
+            name: updateRequest.params.name 
+        }, [ {
+            $set: {
+             children: updateRequest.body.children,
+            }
+        }],
+        { new: true }
+        );
 
         if (this.connection.loggerEnabled) {
             console.log('update result', result);

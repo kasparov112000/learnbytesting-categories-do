@@ -14,10 +14,23 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   }
 
   public async syncCreateCategories(req, res) {
-    const createCategories: Array<Category> = req.body.categories;
+    const cats = new Array();
+    cats.push(req.body.categories);
+    const createCategories: Array<Category> = cats;
+    console.info('createCategories req.body', req.body);
+    console.info('createCategories cats', cats);
+
     const linesOfService: Array<Category> = await this.dbService.find(req);
     for (let createCategory of createCategories) {
+
+    console.info('createCategories createCategory', createCategory);
+    console.info('createCategories createCategories', createCategories);
+
       let lineOfServiceIndex = linesOfService.findIndex(category => category.createUuid === createCategory.createUuid);
+      
+      
+      console.info('losindex', lineOfServiceIndex);
+
 
       if (lineOfServiceIndex !== -1) {
         console.log("Updating category: "+createCategory.name);
@@ -54,7 +67,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
 
     for (let createSubCategory of createCategory.children) {
       let subCategoryIndex = category.children.findIndex(child => child.createUuid === createSubCategory.createUuid);
-
+      console.log('subCategoryIndex', subCategoryIndex);
       if (subCategoryIndex !== -1) {
         let subCategory = this.getUpdatedCategory(category.children[subCategoryIndex], createSubCategory);
         subCategory.modifiedDate = new Date();
@@ -79,7 +92,8 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     lineOfService.modifiedDate = new Date();
     await this.dbService.update({
       params: {
-        id: lineOfService._id
+        id: lineOfService._id,
+        name: lineOfService.name
       },
       body: lineOfService
     });
