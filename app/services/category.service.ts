@@ -111,7 +111,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       delete req.query.includeAll;
       return;
     }
-    const idArr = currentUser.categories.map(lineOfService => {
+    const idArr = currentUser?.categories?.map(lineOfService => {
       const o_id = new ObjectId(lineOfService._id);
       return o_id;
     });
