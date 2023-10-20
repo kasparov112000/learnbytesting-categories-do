@@ -1,7 +1,7 @@
 import { DbServiceBase } from './db-service-base';
 import { ApiResponseHelper } from './utilities';
 import { ApiResponse, PagedApiResponse, MdrApplicationUser } from 'hipolito-models';
-import { DbPagedResults } from '../models';
+import { DbPagedResults, category } from '../models';
 import { Request } from '@root/request';
 import { UnauthorizedException } from './errors/unauthorized-exception';
 import { ObjectId } from 'mongodb';
@@ -38,6 +38,33 @@ export abstract class DbMicroServiceBase {
         } catch (error) {
             return this.handleErrorResponse(error, res);
         }
+    }
+
+    public async getNested(idArr, res) {
+        const parentConditions = { _id: { $in: idArr }, active: true };
+
+        // Aggregate to filter parent documents and their nested items
+        
+        let result = await  category.aggregate([
+          {
+            $match: parentConditions
+          },
+        ])
+
+        .exec();
+
+        result = result.map(parent => this.filterNonActiveChildren(parent));
+
+        return this.handlePagedResponse({result, count: 0}, res);
+    }
+
+    public filterNonActiveChildren(parent: any) {
+        if (parent.children) {
+            parent.children = parent.children.filter(child => child.active);
+            parent.children.forEach(child => this.filterNonActiveChildren(child));
+        }
+
+        return parent;
     }
 
     public async getById(req, res) {

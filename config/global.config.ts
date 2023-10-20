@@ -1,3 +1,5 @@
+import { MicroserviceConnection } from "../app/helpers/microservice";
+
 const ENV_NAME = process.env.ENV_NAME || 'LOCAL';
 const msport = (process.env.ENV_NAME || 'LOCAL') !== 'LOCAL' ? 3000 : 3002;
 
@@ -40,5 +42,8 @@ const appDynamicsConfigs = {
   }
 };
 // /App Dynamics
+const microservices = {
+  users: new MicroserviceConnection('http://users', 3004, 'users', {}),
+}
 
-export { serviceConfigs, appDynamicsConfigs };
+export { serviceConfigs, appDynamicsConfigs, microservices};

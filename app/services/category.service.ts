@@ -1,3 +1,4 @@
+import { getUserDataHelper } from '../helpers/getUserDataHelper';
 import { DbMicroServiceBase } from './db-micro-service-base';
 import { Category, MdrApplicationUser } from 'hipolito-models';
 import { ObjectID, ObjectId } from 'mongodb';
@@ -9,8 +10,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   }
 
   public async getByLineOfService(req, res) {
-    await this.filterLinesOfService(req);
-    super.get(req, res);
+    return await this.filterLinesOfService(req, res);
   }
 
   public async syncCreateCategories(req, res) {
@@ -99,22 +99,24 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     });
   }
 
-  private async filterLinesOfService(req) {
-    const includeAll = !!req.query.includeAll;
-    console.log('includeAll should be false', includeAll);
-    const currentUser: MdrApplicationUser = req.body.currentUser as MdrApplicationUser;
+  private async filterLinesOfService(req, res) {
+    const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
+    const isAdmin = userData?.result?.roles?.filter(role => role.name === 'System Administrator').length > 0;
+    console.log('includeAll should be false', isAdmin);
+    const currentUser: any = req.body.currentUser as MdrApplicationUser;
     console.log('currentUser should have data', currentUser)
-    const countCategories: number = currentUser?.categories?.length || 0;
+    const countCategories: number = currentUser?.linesOfService?.length || 0;
     console.log('countCategories should be 0', countCategories);
    
-    if (includeAll || (( currentUser && !currentUser['isActive']) )) {
-      delete req.query.includeAll;
-      return;
-    }
-    const idArr = currentUser?.categories?.map(lineOfService => {
+    if (isAdmin) return;
+
+    const idArr = currentUser?.linesOfService?.map(lineOfService => {
       const o_id = new ObjectId(lineOfService._id);
       return o_id;
     });
     req.params['_id'] = { '$in': idArr };
+    req.params['active'] = true;
+
+    return super.getNested(idArr, res);
   }
 }
