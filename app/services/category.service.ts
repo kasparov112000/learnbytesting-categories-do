@@ -100,10 +100,9 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   }
 
   private async filterLinesOfService(req, res) {
-    const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
-    const isAdmin = userData?.result?.roles?.filter(role => role.name === 'System Administrator').length > 0;
-    console.log('includeAll should be false', isAdmin);
+    // const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
     const currentUser: any = req.body.currentUser as MdrApplicationUser;
+    const isAdmin = currentUser.roles.filter(role => role.name === 'System Administrator').length > 0;
     console.log('currentUser should have data', currentUser)
     const countCategories: number = currentUser?.linesOfService?.length || 0;
     console.log('countCategories should be 0', countCategories);
