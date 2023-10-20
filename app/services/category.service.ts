@@ -107,7 +107,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     const countCategories: number = currentUser?.linesOfService?.length || 0;
     console.log('countCategories should be 0', countCategories);
    
-    if (isAdmin) return super.getNested(null, res);
+    if (isAdmin) return super.getNested(null, res, isAdmin);
 
     const idArr = currentUser?.linesOfService?.map(lineOfService => {
       const o_id = new ObjectId(lineOfService._id);
@@ -116,6 +116,6 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     req.params['_id'] = { '$in': idArr };
     req.params['active'] = true;
 
-    return super.getNested(idArr, res);
+    return super.getNested(idArr, res, isAdmin);
   }
 }

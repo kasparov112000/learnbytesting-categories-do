@@ -40,7 +40,7 @@ export abstract class DbMicroServiceBase {
         }
     }
 
-    public async getNested(idArr, res) {
+    public async getNested(idArr, res, isAdmin) {
         const parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
 
         // Aggregate to filter parent documents and their nested items
@@ -53,7 +53,9 @@ export abstract class DbMicroServiceBase {
 
         .exec();
 
+        if (!isAdmin) {
         result = result.map(parent => this.filterNonActiveChildren(parent));
+        }
 
         return this.handlePagedResponse({result, count: 0}, res);
     }
