@@ -41,7 +41,7 @@ export abstract class DbMicroServiceBase {
     }
 
     public async getNested(idArr, res) {
-        const parentConditions = { _id: { $in: idArr }, active: true };
+        const parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
 
         // Aggregate to filter parent documents and their nested items
         

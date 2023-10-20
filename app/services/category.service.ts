@@ -107,7 +107,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     const countCategories: number = currentUser?.linesOfService?.length || 0;
     console.log('countCategories should be 0', countCategories);
    
-    if (isAdmin) return;
+    if (isAdmin) return super.getNested(null, res);
 
     const idArr = currentUser?.linesOfService?.map(lineOfService => {
       const o_id = new ObjectId(lineOfService._id);
