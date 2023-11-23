@@ -40,8 +40,13 @@ export abstract class DbMicroServiceBase {
         }
     }
 
-    public async getNested(idArr, res, isAdmin) {
-        const parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
+    public async getNested(idArr, res, isAdmin, getAllCategories) {
+        let parentConditions = {};
+        if(isAdmin || getAllCategories) {
+             parentConditions = idArr ? { _id: { $in: idArr }  } : {};
+        } else {
+            parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
+        }
 
         // Aggregate to filter parent documents and their nested items
         
@@ -53,7 +58,7 @@ export abstract class DbMicroServiceBase {
 
         .exec();
 
-        if (!isAdmin) {
+        if (!isAdmin && !getAllCategories) {
         result = result.map(parent => this.filterNonActiveChildren(parent));
         }
 

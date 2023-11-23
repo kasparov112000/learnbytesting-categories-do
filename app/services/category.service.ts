@@ -102,12 +102,13 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
   private async filterLinesOfService(req, res) {
     // const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
     const currentUser: any = req.body.currentUser as MdrApplicationUser;
+    const getAllCategories: any = req.body.getAllCategories;
     const isAdmin = currentUser?.roles.filter(role => role?.name === 'System Administrator').length > 0;
     console.log('currentUser should have data', currentUser)
     const countCategories: number = currentUser?.linesOfService?.length || 0;
     console.log('countCategories should be 0', countCategories);
    
-    if (isAdmin) return super.getNested(null, res, isAdmin);
+    if (isAdmin || getAllCategories) return super.getNested(null, res, isAdmin, getAllCategories);
 
     const idArr = currentUser?.linesOfService?.map(lineOfService => {
       const o_id = new ObjectId(lineOfService._id);
@@ -116,6 +117,6 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
     req.params['_id'] = { '$in': idArr };
     req.params['active'] = true;
 
-    return super.getNested(idArr, res, isAdmin);
+    return super.getNested(idArr, res, isAdmin, getAllCategories);
   }
 }
