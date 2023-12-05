@@ -94,10 +94,12 @@ export abstract class DbServiceBase {
 
 
         const result = await this.dbModel.findOneAndUpdate({ 
-            name: updateRequest.params.name 
+            _id: updateRequest.body._id 
         }, [ {
             $set: {
-             children: updateRequest.body.children,
+                name: updateRequest.body.name,
+                children: updateRequest.body.children,
+                active: updateRequest.body.active,
             }
         }],
         { new: true }
