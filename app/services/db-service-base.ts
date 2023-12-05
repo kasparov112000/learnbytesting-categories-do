@@ -23,6 +23,7 @@ export abstract class DbServiceBase {
     }
 
     public async grid(aggregate) {
+        console.log('aggregate', aggregate);
         return this.dbModel.aggregate(aggregate).allowDiskUse(true).collation({ locale: 'en_US', numericOrdering: true });
      }
 

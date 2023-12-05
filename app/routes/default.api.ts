@@ -15,6 +15,10 @@ export default function (app, express, serviceobject) {
     res.status(200).json({ message: 'pong from categories' });
   });
 
+  router.post('/categories/grid', (req, res) => {
+    serviceobject.grid({...req.body.session.body }, res);
+  });
+
  app.get('/pingcategoriesdb', (req, res) => {
   console.log('info', 'Attempting to ping categories database');
   dbService.connect()

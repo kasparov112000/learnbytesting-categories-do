@@ -47,6 +47,7 @@
     "license": "ISC",
     "dependencies": {
         "@types/axios": "^0.14.0",
+        "ag-grid-community": "^23.2.1",
         "axios": "^1.5.1",
         "body-parser": "^1.18.3",
         "deep-equal": "^1.1.1",
@@ -58,7 +59,8 @@
         "hipolito-models": "^1.0.4",
         "http": "0.0.0",
         "http-status": "^1.4.2",
-        "lodash": "^4.17.10",
+        "lodash": "^4.17.21",
+        "moment": "^2.29.4",
         "mongoose": "^5.9.4",
         "mongoose-query-parser": "^1.1.5",
         "morgan": "^1.9.0",
