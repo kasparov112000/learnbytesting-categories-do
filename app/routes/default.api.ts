@@ -19,6 +19,10 @@ export default function (app, express, serviceobject) {
     serviceobject.grid({...req.body.session.body }, res);
   });
 
+  router.post('/categories/grid-flatten', (req, res) => {
+    serviceobject.gridFlatten({...req.body.session.body }, res);
+  })
+
  app.get('/pingcategoriesdb', (req, res) => {
   console.log('info', 'Attempting to ping categories database');
   dbService.connect()
