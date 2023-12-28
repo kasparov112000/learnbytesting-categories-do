@@ -124,107 +124,39 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
 
   public async gridFlatten(params: GridServerSideRowRequest, res, txnId): Promise<any> {
 
-    // public async grid(params: GridServerSideRowRequest, permissions: Array<Permissions>, user: User, txnId): Promise<any> {
-      console.log('the params 250', params)
-      const start = parseInt(params?.startRow?.toString() || '', 10);
-      let sort = this.getSortOrder(params);
-      let inflightFilter = null;
-      if (params?.sortModel && params.sortModel[0] && params.sortModel[0].colId === 'isInflight') {
-        sort = { isInflight: params.sortModel[0].sort === 'asc' ? 1 : -1 };
-      }
-      if (params?.search?.inflightStart) {
-        params.search.inflightStart = new Date();
-      } else {
-        // params.search.inflightStart = moment(params.search.inflightStart).toDate();
-      }
-      // if (!params.search.inflightEnd) {
-      //     params.search.inflightEnd = new Date();
-      // } else {
-      //     params.search.inflightEnd = moment(params.search.inflightEnd).toDate();
-      // }
-      if (params.filterModel && has(params.filterModel, 'isInflight.values')) {
-        if (isEqual(params.filterModel.isInflight.values, ['true'])) {
-          inflightFilter = { isInflight: true };
-        } else {
-          inflightFilter = { isInflight: false };
-        }
-        delete params.filterModel.isInflight;
-      }
-      const query = this.getGridFilter(params, 'permissions', true) //'user') //, 'txnId', false);
-      // const query = this.getGridFilter(params, txnId, false);
+      // const start = parseInt(params?.startRow?.toString() || '', 10);
+      // let sort = this.getSortOrder(params);
+      const query = {};
   
-      const aggregate: any = [
-        {
-          $match: query
-        },
-        // {
-        //     $addFields: {
-        //         isInflight: {
-        //             $cond: {
-        //                 if: {
-        //                     $or: [
-        //                         {
-        //                             $and: [
-        //                                 { $gt: ['$firstContactDate', null] },
-        //                                 { $gt: ['$hardCloseDate', null] },
-        //                                 { $lte: ['$firstContactDate', params.search.inflightEnd] },
-        //                                 { $gte: ['$hardCloseDate', params.search.inflightStart] },
-        //                             ],
-        //                         },
-        //                         {
-        //                             $and: [
-        //                                 { $lt: ['$hardCloseDate', new Date(0)] },
-        //                                 { $gt: ['$firstContactDate', null] },
-        //                                 { $lte: ['$firstContactDate', params.search.inflightEnd] },
-        //                             ],
-        //                         },
-        //                         {
-        //                             $and: [{ $lt: ['$firstContactDate', new Date(0)] }, { $lt: ['$hardCloseDate', new Date(0)] }],
-        //                         },
-        //                     ],
-        //                 },
-        //                 then: true,
-        //                 else: false,
-        //             },
-        //         },
-        //     },
-        // },
-      ];
-      // if (inflightFilter) {
-      //     aggregate.push({ $match: inflightFilter });
-      // }
-      if (!isEmpty(sort)) {
-        aggregate.push({ $sort: sort });
-      }
-      aggregate.push(
-        {
-          $group: {
-            _id: null,
-            rows: { $push: '$$ROOT' },
-            lastRow: { $sum: 1 },
-          },
-        },
-        {
-          $project: {
-            lastRow: 1,
-            rows: {
-              $slice: ['$rows', start, params.endRow - params.startRow],
-              //  $slice: ['$rows', 0, 77772 - 1],
-  
-            },
-          },
-        },
-      );
-  
-      let results = await this.dbService.grid(aggregate); // this.model.aggregate(aggregate).allowDiskUse(true).collation({ locale: 'en_US', numericOrdering: true });
+      let results = await this.dbService.find(query); 
       const response = results[0] || { rows: [], lastRow: 0 };
-      // if(response.rows.length > 0){
-      //   const categories = await CategoriesHelper.getCategories();
-      //   response.rows = CategoriesHelper.mapCategories(response.rows, categories?.result);
-      // }
 
       response.rows = this.flattenNestedStructure([...response.rows]);
+
+      // Filter by search
+      if (params?.search?.search) {
+        response.rows = response.rows.filter(row => row.name.toLowerCase().includes(params.search.search.toLowerCase()));
+      }
+
+      // Sort
+      response.rows = this.sortCategories(params, response.rows);
+
       return res.status(200).json(response);
+  }
+
+  private sortCategories(params, arr) {
+    if (params.sortModel?.length > 0) {
+      const { colId, sort } = params.sortModel[0];
+      return arr.rows.sort((a, b) => {
+        if (a[colId] < b[colId]) {
+          return sort === 'asc' ? -1 : 1;
+        }
+        if (a[colId] > b[colId]) {
+          return sort === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
   }
 
   private getSortOrder(params: GridServerSideRowRequest): Record<string, number> {
