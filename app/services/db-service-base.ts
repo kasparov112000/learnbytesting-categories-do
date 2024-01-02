@@ -54,6 +54,10 @@ export abstract class DbServiceBase {
         }
     }
 
+    public async findAll<TResult = any>(): Promise<TResult> {
+        return await this.dbModel.find().lean();
+    }
+
     public async find<TResult = any>(req): Promise<TResult> {
         const query = this.getQuery(req);
         if (req.query && req.query.page && req.query.pageSize) {

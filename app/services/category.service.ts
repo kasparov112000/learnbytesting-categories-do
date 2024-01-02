@@ -128,18 +128,20 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       // let sort = this.getSortOrder(params);
       const query = {};
   
-      let results = await this.dbService.find(query); 
-      const response = results[0] || { rows: [], lastRow: 0 };
-
-      response.rows = this.flattenNestedStructure([...response.rows]);
+      let results = await this.dbService.findAll(); 
+      let response = this.flattenNestedStructure(results);
 
       // Filter by search
       if (params?.search?.search) {
         response.rows = response.rows.filter(row => row.name.toLowerCase().includes(params.search.search.toLowerCase()));
       }
 
+      if(params?.filterModel?.name?.filter) {
+        response = response.filter(row => row.name.toLowerCase().includes(params.filterModel.name.filter.toLowerCase()));
+      }
+
       // Sort
-      response.rows = this.sortCategories(params, response.rows);
+      // response.rows = this.sortCategories(params, response.rows);
 
       return res.status(200).json(response);
   }
@@ -501,7 +503,6 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
 
   private flattenNestedStructure(categories: any[]) {
     let result: any = [];
-    debugger;
 
     const flatten = (node) => {
       result.push({ name: node.name });
@@ -513,7 +514,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
       }
     }
 
-    categories.map(obj => flatten(obj));
+    categories.forEach(obj => flatten(obj));
 
     return result;
   }
