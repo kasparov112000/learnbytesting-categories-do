@@ -124,10 +124,7 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
 
   public async gridFlatten(params: GridServerSideRowRequest, res, txnId): Promise<any> {
 
-      // const start = parseInt(params?.startRow?.toString() || '', 10);
-      // let sort = this.getSortOrder(params);
       const query = {};
-  
       let results = await this.dbService.findAll(); 
       let response = this.flattenNestedStructure(results);
 
@@ -140,11 +137,21 @@ export class CategoryService extends DbMicroServiceBase { // eslint-disable-line
         response = response.filter(row => row.name.toLowerCase().includes(params.filterModel.name.filter.toLowerCase()));
       }
 
+      const start = parseInt(params?.startRow?.toString() || '', 10);
+      const end = parseInt(params?.endRow?.toString() || '', 10);
+      const slicedCategories = this.sliceArray(response, start, end);
+      // let sort = this.getSortOrder(params);
+
       // Sort
       // response.rows = this.sortCategories(params, response.rows);
 
-      return res.status(200).json(response);
+      return res.status(200).json({rows: slicedCategories, lastRow: response.length});
   }
+
+   sliceArray(items: [], start: number, end: number)  {
+    return items.slice(start, end);
+   }
+
 
   private sortCategories(params, arr) {
     if (params.sortModel?.length > 0) {
