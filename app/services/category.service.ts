@@ -140,7 +140,7 @@ export class CategoryService extends DbMicroServiceBase {
 
     let results = await this.dbService.findAll();
     let allCategories = this.flattenNestedStructure(results);
-    let categoriesFiltered = allCategories;
+    let categoriesResult = allCategories;
 
     // Filter by search
     // if(params?.filterModel?.name?.filter) {
@@ -148,15 +148,19 @@ export class CategoryService extends DbMicroServiceBase {
     // }
 
     if (params) {
-      categoriesFiltered = GridFilterSearchHelper.handleSearchFilter(
+      // Filter by search
+      categoriesResult = GridFilterSearchHelper.handleSearchFilter(
         params.filterModel,
         allCategories
       )[0];
+
+      // Sort
+      categoriesResult = this.sortCategories(params, categoriesResult);
     }
 
     const start = parseInt(params?.startRow?.toString() || "", 10);
     const end = parseInt(params?.endRow?.toString() || "", 10);
-    const slicedCategories = this.sliceArray(categoriesFiltered, start, end);
+    const slicedCategories = this.sliceArray(categoriesResult, start, end);
     // let sort = this.getSortOrder(params);
 
     // Sort
@@ -164,7 +168,7 @@ export class CategoryService extends DbMicroServiceBase {
 
     return res
       .status(200)
-      .json({ rows: slicedCategories, lastRow: categoriesFiltered.length });
+      .json({ rows: slicedCategories, lastRow: categoriesResult.length });
   }
 
   sliceArray(items: [], start: number, end: number) {
@@ -173,18 +177,18 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   private sortCategories(params, arr) {
-    if (params.sortModel?.length > 0) {
-      const { colId, sort } = params.sortModel[0];
-      return arr.rows.sort((a, b) => {
-        if (a[colId] < b[colId]) {
-          return sort === "asc" ? -1 : 1;
-        }
-        if (a[colId] > b[colId]) {
-          return sort === "asc" ? 1 : -1;
-        }
-        return 0;
-      });
-    }
+    if (params.sortModel?.length === 0) return arr;
+
+    const { colId, sort } = params.sortModel[0];
+    return arr.sort((a, b) => {
+      if (a[colId] < b[colId]) {
+        return sort === "asc" ? -1 : 1;
+      }
+      if (a[colId] > b[colId]) {
+        return sort === "asc" ? 1 : -1;
+      }
+      return 0;
+    });
   }
 
   private getSortOrder(
