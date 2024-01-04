@@ -139,6 +139,7 @@ export class CategoryService extends DbMicroServiceBase {
     // let sort = this.getSortOrder(params);
 
     let results = await this.dbService.findAll();
+    results = results.map((category) => this.buildBreadCrumb(category));
     let allCategories = this.flattenNestedStructure(results);
     let categoriesResult = allCategories;
 
@@ -642,7 +643,7 @@ export class CategoryService extends DbMicroServiceBase {
     let result: any = [];
 
     const flatten = (node) => {
-      result.push({ name: node.name });
+      result.push({ name: node.name, breadCrumb: node.breadCrumb });
 
       if (node.children && node.children.length > 0) {
         node.children.forEach((child) => {
@@ -708,5 +709,21 @@ export class CategoryService extends DbMicroServiceBase {
       default:
         return field;
     }
+  }
+
+  private buildBreadCrumb(node, parentBreadCrumb = "") {
+    // Update the breadCrumb for the current node
+    node.breadCrumb = parentBreadCrumb
+      ? `${parentBreadCrumb} > ${node.name}`
+      : node.name;
+
+    // Recursively update breadCrumb for children
+    if (node.children) {
+      for (const child of node.children) {
+        this.buildBreadCrumb(child, node.breadCrumb);
+      }
+    }
+
+    return node;
   }
 }
