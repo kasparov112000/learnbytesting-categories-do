@@ -643,7 +643,12 @@ export class CategoryService extends DbMicroServiceBase {
     let result: any = [];
 
     const flatten = (node) => {
-      result.push({ name: node.name, breadCrumb: node.breadCrumb });
+      result.push({ 
+        name: node.name, 
+        breadCrumb: node.breadCrumb,
+        createdDate: node.createdDate,
+        active: node.active,
+      });
 
       if (node.children && node.children.length > 0) {
         node.children.forEach((child) => {

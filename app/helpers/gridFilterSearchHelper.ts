@@ -40,6 +40,13 @@ export class GridFilterSearchHelper {
             gridData,
           });
           return categories;
+        case "date":
+          categories = this.getDateFilter({
+            key: filter.key,
+            searchFilter: { ...filter },
+            gridData,
+          });
+          return categories;
         default:
           return [gridData];
       }
@@ -155,23 +162,33 @@ export class GridFilterSearchHelper {
   }
 
   private static getDateFilter({ key, searchFilter, gridData }) {
-    const date = moment
-      .utc(searchFilter.dateFrom)
-      .format("YYYY-MM-DD HH:mm:ss");
+    const dateFrom = new Date(searchFilter.searchFilter.dateFrom);
 
-    switch (searchFilter.type) {
+    switch (searchFilter.searchFilter.type) {
       case "equals":
-        return gridData.map((item) => item[key] === date);
+        return gridData.filter(
+          (item) => new Date(item[key]).getTime() === dateFrom.getTime()
+        );
       case "notEqual":
-        return gridData.map((item) => item[key] !== date);
+        return gridData.filter(
+          (item) => new Date(item[key]).getTime() !== dateFrom.getTime()
+        );
       case "greaterThan":
-        return gridData.map((item) => item[key] > date);
+        return gridData.filter(
+          (item) => new Date(item[key]).getTime() > dateFrom.getTime()
+        );
       case "greaterThanOrEqual":
-        return gridData.map((item) => item[key] >= date);
+        return gridData.filter(
+          (item) => new Date(item[key]).getTime() >= dateFrom.getTime()
+        );
       case "lessThan":
-        return gridData.map((item) => item[key] < date);
+        return gridData.filter(
+          (item) => new Date(item[key]).getTime() < dateFrom.getTime()
+        );
       case "lessThanOrEqual":
-        return gridData.map((item) => item[key] <= date);
+        return gridData.filter(
+          (item) => new Date(item[key]).getTime() <= dateFrom.getTime()
+        );
       default:
         return gridData;
     }
