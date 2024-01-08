@@ -172,7 +172,21 @@ export class CategoryService extends DbMicroServiceBase {
       .json({ rows: slicedCategories, lastRow: categoriesResult.length });
   }
 
-  sliceArray(items: [], start: number, end: number) {
+  public async search(req, res) {
+    let results = await this.dbService.findAll();
+    results = results.map((category) => this.buildBreadCrumb(category));
+    let allCategories = this.flattenNestedStructure(results);
+
+    const searchText = req.body.search;
+
+    const response = allCategories.filter((category) => {
+      return category.name.toLowerCase().includes(searchText.toLowerCase());
+    });
+
+    return res.status(200).json(response);
+  }
+
+  public sliceArray(items: [], start: number, end: number) {
     const result = items.slice(start, end);
     return result;
   }
@@ -643,8 +657,8 @@ export class CategoryService extends DbMicroServiceBase {
     let result: any = [];
 
     const flatten = (node) => {
-      result.push({ 
-        name: node.name, 
+      result.push({
+        name: node.name,
         breadCrumb: node.breadCrumb,
         createdDate: node.createdDate,
         active: node.active,
