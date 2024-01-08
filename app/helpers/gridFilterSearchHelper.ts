@@ -33,7 +33,7 @@ export class GridFilterSearchHelper {
             gridData,
           });
           return categories;
-        case "boolean":
+        case "set":
           categories = this.getBooleanFilter({
             key: filter.key,
             searchFilter: { ...filter },
@@ -189,20 +189,35 @@ export class GridFilterSearchHelper {
         return gridData.filter(
           (item) => new Date(item[key]).getTime() <= dateFrom.getTime()
         );
+      case "blanks":
+        return gridData.filter(
+          (item) =>
+            item[key] === null || item[key] === "" || item[key] === undefined
+        );
+      case "notBlanks":
+        return gridData.filter(
+          (item) =>
+            item[key] !== null || item[key] !== "" || item[key] !== undefined
+        );
       default:
         return gridData;
     }
   }
 
   private static getBooleanFilter({ key, searchFilter, gridData }) {
-    switch (searchFilter.type) {
-      case "equals":
-        return gridData.map((item) => item[key] === searchFilter.filter);
-      case "notEqual":
-        return gridData.map((item) => item[key] !== searchFilter.filter);
-      default:
-        return gridData;
-    }
+    const { searchFilter: filter } = searchFilter;
+    if (filter.values.length === 0) return [];
+
+    const res = gridData.filter((item) => {
+      if (filter.values.includes("true") && item[key] === true) {
+        return item;
+      }
+      if (filter.values.includes("false") && item[key] === false) {
+        return item;
+      }
+    });
+
+    return res;
   }
 
   private static getSortOrder({ key, searchFilter, gridData }) {
