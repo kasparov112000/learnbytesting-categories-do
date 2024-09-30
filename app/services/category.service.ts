@@ -653,28 +653,57 @@ export class CategoryService extends DbMicroServiceBase {
     };
   }
 
-  private flattenNestedStructure(categories: any[]) {
+  private flattenNestedStructure(categories: any[], subNodeName = 'Angular') {
     let result: any = [];
 
+    // Helper function to flatten nodes
     const flatten = (node) => {
-      result.push({
-        name: node.name,
-        breadCrumb: node.breadCrumb,
-        createdDate: node.createdDate,
-        active: node.active,
-      });
-
-      if (node.children && node.children.length > 0) {
-        node.children.forEach((child) => {
-          flatten(child);
+        result.push({
+            name: node.name,
+            breadCrumb: node.breadCrumb,
+            createdDate: node.createdDate,
+            active: node.active,
         });
-      }
+
+        if (node.children && node.children.length > 0) {
+            node.children.forEach((child) => {
+                flatten(child);
+            });
+        }
     };
 
-    categories.forEach((obj) => flatten(obj));
+    // Traverse the main node to find the subNode
+    const findSubNode = (node) => {
+        console.log('Traversing node:', node.name);  // Log the node being traversed
+
+        if (typeof node.name === 'string' && node.name.trim() === subNodeName) {
+            console.log('Found subNode:', node.name);  // Log when the subNode is found
+            // Found the subNode, flatten its children
+            if (node.children && node.children.length > 0) {
+                node.children.forEach((child) => {
+                    flatten(child);
+                });
+            }
+        } else if (node.children && node.children.length > 0) {
+            // Continue searching in the children
+            node.children.forEach((child) => {
+                findSubNode(child);
+            });
+        }
+    };
+
+    // Loop through all categories in the array
+    categories.forEach((category) => {
+        findSubNode(category);
+    });
 
     return result;
-  }
+}
+
+
+  
+  
+  
 
   private convertFieldToFlatKey(field: string) {
     switch (field) {
