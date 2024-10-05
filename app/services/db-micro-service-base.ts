@@ -65,10 +65,163 @@ export abstract class DbMicroServiceBase {
         return this.handlePagedResponse({result, count: 0}, res);
     }
 
+
+public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllCategories) {
+
+    let parentConditions:any = {
+        name: categoryName,
+        // active: true
+    };
+
+    // If not an admin and not getting all categories, only show active categories
+    if (!isAdmin && !getAllCategories) {
+        parentConditions.active = true;
+    }
+
+    // Aggregate to match the parent category and filter the subcategory and its children
+    let result = await category.aggregate([
+        {
+            $match: parentConditions // Match the parent category
+        },
+        {
+            $project: {
+                // Project only the required fields
+                _id: 1,
+                name: 1,
+                children: {
+                    $filter: {
+                        input: "$children", // Array of children at this level
+                        as: "child",
+                        cond: {
+                            $and: [
+                                { $eq: ["$$child.name", subCategoryName] }, // Match the subcategory name
+                                // { $or: [ 
+                                // { $eq: [isAdmin, true] },
+                                // { $eq: ["$$child.active", true] }] } // Filter by active only if not admin
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        { 
+            $unwind: "$children" // Unwind to get only the matching subcategory and its children
+        }
+    ]).exec();
+
+  //  if (!isAdmin && !getAllCategories) {
+        result = result.map(parent => this.filterNonActiveChildren(parent));
+  //  }
+
+    return this.handlePagedResponse({ result, count: 0 }, res);
+}
+
+public async getSubCategory2(categoryName, subCategoryName, res, isAdmin) {
+
+    let parentConditions:any = {
+        name: categoryName,
+        // active: true
+    };
+
+    // If not an admin and not getting all categories, only show active categories
+    if (!isAdmin) {
+        parentConditions.active = true;
+    }
+
+    // Aggregate to match the parent category and filter the subcategory and its children
+    let result = await category.aggregate([
+        {
+            $match: parentConditions // Match the parent category
+        },
+        {
+            $project: {
+                // Project only the required fields
+                _id: 1,
+                name: 1,
+                children: {
+                    $filter: {
+                        input: "$children", // Array of children at this level
+                        as: "child",
+                        cond: {
+                            $and: [
+                                { $eq: ["$$child.name", subCategoryName] }, // Match the subcategory name
+                                // { $or: [ 
+                                // { $eq: [isAdmin, true] },
+                                // { $eq: ["$$child.active", true] }] } // Filter by active only if not admin
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        { 
+            $unwind: "$children" // Unwind to get only the matching subcategory and its children
+        }
+    ]).exec();
+
+  //  if (!isAdmin && !getAllCategories) {
+        result = result.map(parent => this.filterNonActiveChildren(parent));
+  //  }
+
+    return result; // this.handlePagedResponse({ result, count: 0 }, res);
+}
+
+
+    public async getNestedByCategory(idArr, res, isAdmin, getAllCategories, mainCategoryId, categoryId, category) {
+        let parentConditions = {};
+        if (isAdmin || getAllCategories) {
+            parentConditions = idArr ? { _id: { $in: idArr } } : {};
+        } else {
+            parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
+        }
+    
+        // Aggregate to filter parent documents and their nested items
+        let result = await category.aggregate([
+            {
+                $match: parentConditions
+            },
+            {
+                $lookup: {
+                    from: 'subcategories', // Replace with the actual collection name for subcategories
+                    localField: '_id',
+                    foreignField: 'parentCategoryId', // Replace with the actual field name for parent category reference
+                    as: 'subcategories'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$subcategories',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $match: {
+                    'subcategories.mainCategoryId': mainCategoryId,
+                    'subcategories._id': categoryId
+                }
+            },
+            {
+                $group: {
+                    _id: '$_id',
+                    parentCategory: { $first: '$$ROOT' },
+                    subcategories: { $push: '$subcategories' }
+                }
+            }
+        ]).exec();
+    
+        if (!isAdmin && !getAllCategories) {
+            result = result.map(parent => this.filterNonActiveChildren(parent));
+        }
+    
+        return this.handlePagedResponse({ result, count: 0 }, res);
+    }
+
     public filterNonActiveChildren(parent: any) {
         if (parent.children) {
+            if (Array.isArray(parent.children)) {
             parent.children = parent.children.filter(child => child.active);
             parent.children.forEach(child => this.filterNonActiveChildren(child));
+            }
         }
 
         return parent;

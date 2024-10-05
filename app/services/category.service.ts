@@ -20,6 +20,13 @@ export class CategoryService extends DbMicroServiceBase {
     return await this.filterLinesOfService(req, res);
   }
 
+  public async getByCategory(req, res) {
+    let resp;
+    resp = await this.filterByCategory(req, res);
+    return resp;
+  }
+
+
   public async grid(
     params: GridServerSideRowRequest,
     res,
@@ -131,6 +138,7 @@ export class CategoryService extends DbMicroServiceBase {
 
   public async gridFlatten(
     params: GridServerSideRowRequest,
+    userInfo,
     res,
     txnId
   ): Promise<any> {
@@ -138,8 +146,15 @@ export class CategoryService extends DbMicroServiceBase {
     // const start = parseInt(params?.startRow?.toString() || '', 10);
     // let sort = this.getSortOrder(params);
 
-    let results = await this.dbService.findAll();
-    results = results.map((category) => this.buildBreadCrumb(category));
+    let results = await this.filterByCategory2(userInfo, res);
+    const mainCategory = { ...results[0], children: [] };
+    const category = { ...results[0].children, count:results[0].children.length, children: [] };
+
+    const categories = { ...results[0].children };
+ 
+      results = results[0].children.children.map((category) => this.buildBreadCrumb(category));
+ 
+  
     let allCategories = this.flattenNestedStructure(results);
     let categoriesResult = allCategories;
 
@@ -169,7 +184,7 @@ export class CategoryService extends DbMicroServiceBase {
 
     return res
       .status(200)
-      .json({ rows: slicedCategories, lastRow: categoriesResult.length });
+      .json({ rows: slicedCategories, lastRow: categoriesResult.length, categories, mainCategory, category });
   }
 
   public async search(req, res) {
@@ -192,7 +207,7 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   private sortCategories(params, arr) {
-    if (params.sortModel?.length === 0) return arr;
+    if (params.sortModel && params.sortModel?.length === 0) return arr;
 
     const { colId, sort } = params.sortModel[0];
     return arr.sort((a, b) => {
@@ -370,6 +385,71 @@ export class CategoryService extends DbMicroServiceBase {
     req.params["active"] = true;
 
     return super.getNested(idArr, res, isAdmin, getAllCategories);
+  }
+
+  
+  private async filterByCategory(req, res) {
+    // const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
+   
+    const userInfo = req?.body?.userInfo?.result || req?.body?.session?.user?.userInfo?.result;
+    const currentUser: any = req.body.currentUser || userInfo;
+    const getAllCategories: any = req.body.getAllCategories;
+    const mainCategory = { ...userInfo.mainCategory[0], children: [] };
+    const category = {...userInfo.category[0], children: []};
+
+    const isAdmin = true;
+      // currentUser?.roles?.filter(
+      //   (role) => role?.name === "System Administrator"
+      // ).length > 0 || currentUser['https://learnbytesting_ai/roles'].includes("Admin");
+    console.log("currentUser should have data", currentUser);
+    const countCategories: number = currentUser?.linesOfService?.length || 0;
+    console.log("countCategories should be 0", countCategories);
+
+    if (isAdmin || getAllCategories) {
+      let resp = await super.getSubCategory(mainCategory.name, category.name, res, isAdmin, getAllCategories);
+    return resp;
+    }
+
+    const idArr = currentUser?.linesOfService?.map((lineOfService) => {
+      const o_id = new ObjectId(lineOfService._id);
+      return o_id;
+    });
+    req.params["_id"] = { $in: idArr };
+    req.params["active"] = true;
+
+    return super.getSubCategory(mainCategory.name, category.name, res, isAdmin, getAllCategories);
+  }
+
+  private async  filterByCategory2(userInfo, res) {
+    // const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
+   
+    // const userInfo = req?.body?.userInfo?.result || req?.body?.session?.user?.userInfo?.result;
+    // const currentUser: any = req.body.currentUser || userInfo;
+    //const getAllCategories: any = req.body.getAllCategories;
+    const mainCategory = { ...userInfo.mainCategory[0], children: [] };
+    const category = {...userInfo.category[0], children: []};
+
+    const isAdmin = true;
+      // currentUser?.roles?.filter(
+      //   (role) => role?.name === "System Administrator"
+      // ).length > 0 || currentUser['https://learnbytesting_ai/roles'].includes("Admin");
+    // console.log("currentUser should have data", currentUser);
+    const countCategories: number = 0; // currentUser?.linesOfService?.length || 0;
+ 
+
+    if (isAdmin) {
+      let resp = await super.getSubCategory2(mainCategory.name, category.name, res, isAdmin);
+    return resp;
+    }
+
+    // const idArr = currentUser?.linesOfService?.map((lineOfService) => {
+    //   const o_id = new ObjectId(lineOfService._id);
+    //   return o_id;
+   //  });
+    //req.params["_id"] = { $in: idArr };
+    // req.params["active"] = true;
+
+    return super.getSubCategory2(mainCategory.name, category.name, res, isAdmin);
   }
 
   private getGridFilter(
@@ -676,7 +756,9 @@ export class CategoryService extends DbMicroServiceBase {
     const findSubNode = (node) => {
         console.log('Traversing node:', node.name);  // Log the node being traversed
 
-        if (typeof node.name === 'string' && node.name.trim() === subNodeName) {
+        if (typeof node.name === 'string' 
+        //  && node.name.trim() === subNodeName
+        ) {
             console.log('Found subNode:', node.name);  // Log when the subNode is found
             // Found the subNode, flatten its children
             if (node.children && node.children.length > 0) {

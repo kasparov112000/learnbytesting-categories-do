@@ -4,7 +4,7 @@ import { ConnectionConfig } from 'hipolito-framework';
 const environment = process.env.ENV_NAME || 'LOCAL';
 let database = process.env.MONGO_NAME || 'mdr-categories';
 
-const host = process.env.MONGO_HOST || 'localhost';
+const host = process.env.MONGO_HOST || '127.0.0.1';
 const mongoport = process.env.MONGO_PORT || 27017;
 const password = process.env.MONGO_PASSWORD || '';
 const username = process.env.MONGO_USER || '';

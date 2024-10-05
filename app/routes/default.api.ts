@@ -19,6 +19,9 @@ export default function (app, express, serviceobject) {
   });
 
   router.post(`${baseUrl}/grid-flatten`, (req, res) => {
+    serviceobject.gridFlatten(req.body.params, req.body.userInfo, res);
+  });
+  router.post(`${baseUrl}/lbt-categories`, (req, res) => {
     serviceobject.gridFlatten({ ...req.body.session.body }, res);
   });
 
@@ -51,7 +54,11 @@ export default function (app, express, serviceobject) {
   });
 
   router.post(baseUrl, (req, res) => {
-    serviceobject.getByLineOfService(req, res);
+    serviceobject.getByCategory(req, res);
+  });
+
+  router.post(`${baseUrl}/getByCategory`, (req, res) => {
+    serviceobject.getByCategory(req, res);
   });
 
   router.post(`${baseUrl}/sync/create`, (req, res) => {
