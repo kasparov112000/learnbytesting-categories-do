@@ -393,7 +393,7 @@ export class CategoryService extends DbMicroServiceBase {
    
     const userInfo = req?.body?.userInfo?.result || req?.body?.session?.user?.userInfo?.result;
     const currentUser: any = req.body.currentUser || userInfo;
-    const getAllCategories: any = req.body.getAllCategories;
+    const getAllCategories: any = req.body.includeAll;
     const mainCategory = { ...userInfo.mainCategory[0], children: [] };
     const category = {...userInfo.category[0], children: []};
 

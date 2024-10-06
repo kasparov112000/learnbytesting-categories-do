@@ -72,14 +72,14 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
         name: categoryName,
         // active: true
     };
+    let result;
 
     // If not an admin and not getting all categories, only show active categories
     if (!isAdmin && !getAllCategories) {
         parentConditions.active = true;
-    }
 
-    // Aggregate to match the parent category and filter the subcategory and its children
-    let result = await category.aggregate([
+            // Aggregate to match the parent category and filter the subcategory and its children
+     result = await category.aggregate([
         {
             $match: parentConditions // Match the parent category
         },
@@ -108,6 +108,25 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
             $unwind: "$children" // Unwind to get only the matching subcategory and its children
         }
     ]).exec();
+    } else {
+        // Aggregate to match the parent category and include all subcategories and their children
+        result = await category.aggregate([
+            {
+                $match: parentConditions // Match the parent category
+            },
+            {
+                $project: {
+                    // Project only the required fields
+                    _id: 1,
+                    name: 1,
+                    children: 1 // Include all children without filtering
+                }
+            }
+        ]).exec();
+
+    }
+
+
 
   //  if (!isAdmin && !getAllCategories) {
         result = result.map(parent => this.filterNonActiveChildren(parent));
