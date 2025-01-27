@@ -141,51 +141,106 @@ export class CategoryService extends DbMicroServiceBase {
     userInfo,
     res,
     txnId
-  ): Promise<any> {
-    const query = {};
-    // const start = parseInt(params?.startRow?.toString() || '', 10);
-    // let sort = this.getSortOrder(params);
-
+): Promise<any> {
     let results = await this.filterByCategory2(userInfo, res);
-    const mainCategory = { ...results[0], children: [] };
-    const category = { ...results[0].children, count:results[0].children.length, children: [] };
+    console.log('1. Initial results:', {
+        hasResults: !!results?.length,
+        firstResult: results?.[0]
+    });
+    
+    if (!results?.length) {
+        return res.status(200).json({ 
+            rows: [], 
+            lastRow: 0, 
+            categories: {}, 
+            mainCategory: {}, 
+            category: {} 
+        });
+    }
 
-    const categories = { ...results[0].children };
- 
-      results = results[0].children.children.map((category) => this.buildBreadCrumb(category));
- 
-  
-    let allCategories = this.flattenNestedStructure(results);
+    const mainCategory = { ...results[0], children: [] };
+    const category = results[0].children ? {
+        ...results[0].children,
+        count: results[0].children.length,
+    } : { count: 0, children: [] };
+
+    const categories = results[0].children || {};
+
+    console.log('5. Before mapping children:', {
+        hasNestedChildren: !!results[0].children?.children,
+        nestedChildrenCount: results[0].children?.children?.length,
+        nestedChildren: results[0].children?.children
+    });
+
+    // Modified this part to properly handle the breadcrumb
+    results = results[0].children?.children?.map(
+        (category) => ({
+            ...category,
+            breadcrumb: `Chess > ${category.name}`,  // Using parent category name
+            parent: results[0].children.name  // Store parent name
+        })
+    ) || [];
+
+    console.log('6. After mapping children:', {
+        resultsLength: results.length,
+        mappedResults: results
+    });
+
+    // Replace the flattenNestedStructure call with direct array
+    let allCategories = results;  // Since we don't need to flatten further
+    console.log('7. Categories structure:', {
+        categoriesLength: allCategories.length,
+        categories: allCategories
+    });
+
     let categoriesResult = allCategories;
 
-    // Filter by search
-    // if(params?.filterModel?.name?.filter) {
-    //   response = response.filter(row => row.name.toLowerCase().includes(params.filterModel.name.filter.toLowerCase()));
-    // }
-
     if (params) {
-      // Filter by search
-      categoriesResult = GridFilterSearchHelper.handleSearchFilter(
-        params.filterModel,
-        allCategories
-      )[0];
+        console.log('8. Grid params:', {
+            filterModel: params.filterModel,
+            startRow: params.startRow,
+            endRow: params.endRow
+        });
 
-      // Sort
-      categoriesResult = this.sortCategories(params, categoriesResult);
+        categoriesResult = GridFilterSearchHelper.handleSearchFilter(
+            params.filterModel,
+            allCategories
+        )[0];
+        console.log('9. After search filter:', {
+            resultLength: categoriesResult.length,
+            filteredResults: categoriesResult
+        });
+
+        categoriesResult = this.sortCategories(params, categoriesResult);
+        console.log('10. After sorting:', {
+            resultLength: categoriesResult.length
+        });
     }
 
     const start = parseInt(params?.startRow?.toString() || "", 10);
     const end = parseInt(params?.endRow?.toString() || "", 10);
+
     const slicedCategories = this.sliceArray(categoriesResult, start, end);
-    // let sort = this.getSortOrder(params);
+    console.log('12. Final sliced categories:', {
+        slicedLength: slicedCategories.length,
+        slicedData: slicedCategories
+    });
 
-    // Sort
-    // response.rows = this.sortCategories(params, response.rows);
+    return res.status(200).json({ 
+        rows: slicedCategories, 
+        lastRow: categoriesResult.length, 
+        categories, 
+        mainCategory, 
+        category 
+    });
+}
 
-    return res
-      .status(200)
-      .json({ rows: slicedCategories, lastRow: categoriesResult.length, categories, mainCategory, category });
-  }
+// Helper method to check if a category has any nested items
+private hasNestedItems(category: any): boolean {
+    return category && 
+           Array.isArray(category.children) && 
+           category.children.length > 0;
+}
 
   public async search(req, res) {
     let results = await this.dbService.findAll();
@@ -438,7 +493,7 @@ export class CategoryService extends DbMicroServiceBase {
  
 
     if (isAdmin) {
-      let resp = await super.getSubCategory2(mainCategory.name, category.name, res, isAdmin);
+      let resp = await super.getSubCategory2(mainCategory.name, category.name, res, isAdmin, category._id);
     return resp;
     }
 
@@ -449,7 +504,7 @@ export class CategoryService extends DbMicroServiceBase {
     //req.params["_id"] = { $in: idArr };
     // req.params["active"] = true;
 
-    return super.getSubCategory2(mainCategory.name, category.name, res, isAdmin);
+    return super.getSubCategory2(mainCategory.name, category.name, res, isAdmin, category.id);
   }
 
   private getGridFilter(
