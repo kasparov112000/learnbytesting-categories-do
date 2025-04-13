@@ -361,118 +361,91 @@ private hasNestedItems(category: any): boolean {
     category: Category,
     createCategory: Category
   ): Promise<Category> {
-    // Create a new category instance and ensure it has all required properties
+    console.log('Starting getUpdatedCategory with:', {
+        categoryId: category?._id,
+        categoryName: category?.name,
+        createCategoryId: createCategory?._id,
+        createCategoryName: createCategory?.name
+    });
+
+    // Create a new category instance
     const updatedCategory = new Category();
     
     // Copy existing properties if they exist
     if (category) {
         Object.assign(updatedCategory, category);
     }
-    
-    // Initialize or ensure children arrays exist
-    updatedCategory.children = Array.isArray(updatedCategory.children) ? updatedCategory.children : [];
-    const createChildren = Array.isArray(createCategory?.children) ? createCategory.children : [];
-    
-    // Set basic properties
+
+    // Set basic properties from createCategory
     updatedCategory._id = updatedCategory._id || createCategory._id || new ObjectID().toHexString();
-    updatedCategory.createdDate = updatedCategory.createdDate || new Date();
     updatedCategory.name = createCategory.name;
-    updatedCategory.createCreatedDate = createCategory.createCreatedDate || new Date();
     updatedCategory.active = createCategory.active !== undefined ? createCategory.active : true;
-    updatedCategory.createUuid = createCategory.createUuid;
-    updatedCategory.parent = createCategory.parent;
+    updatedCategory.createUuid = createCategory.createUuid || updatedCategory.createUuid;
+    updatedCategory.parent = createCategory.parent || updatedCategory.parent;
+    updatedCategory.createdDate = updatedCategory.createdDate || createCategory.createdDate || new Date();
+    updatedCategory.createCreatedDate = updatedCategory.createCreatedDate || createCategory.createCreatedDate || new Date();
+    updatedCategory.modifiedDate = new Date();
 
-    console.log('Processing category:', {
-        name: updatedCategory.name,
-        id: updatedCategory._id,
-        childrenCount: createChildren.length
-    });
-
-    // Process each child category
-    for (let createChild of createChildren) {
-        try {
-            // Ensure createChild is properly structured
-            if (!createChild) continue;
-
-            console.log('Processing child:', {
-                name: createChild.name,
-                id: createChild._id,
-                createUuid: createChild.createUuid
-            });
-
-            // Try to find existing child
-            let existingChildIndex = updatedCategory.children.findIndex(
-                child => child && child.createUuid === createChild.createUuid
-            );
-
-            if (existingChildIndex !== -1) {
-                // Update existing child
-                console.log('Updating existing child:', createChild.name);
-                let updatedChild = await this.getUpdatedCategory(
-                    updatedCategory.children[existingChildIndex],
-                    createChild
-                );
-                updatedChild.modifiedDate = new Date();
-                updatedChild.parent = updatedCategory._id;
-                updatedCategory.children[existingChildIndex] = updatedChild;
-            } else {
-                // Create new child
-                console.log('Creating new child:', createChild.name);
-                const newChild = new Category();
-                newChild.createUuid = createChild.createUuid;
-                newChild.parent = updatedCategory._id;
-                newChild.name = createChild.name;
-                newChild.active = true;
-                newChild.createdDate = new Date();
-                newChild.createCreatedDate = createChild.createCreatedDate || new Date();
-                newChild.children = [];
-                newChild._id = createChild._id || new ObjectID().toHexString();
-                updatedCategory.children.push(newChild);
-            }
-        } catch (error) {
-            console.error('Error processing child category:', error);
-            continue;
-        }
+    // Initialize children arrays
+    if (!Array.isArray(updatedCategory.children)) {
+        updatedCategory.children = [];
     }
 
-    // If this is a new category being added
-    if (!category._id && createCategory.parent) {
-        try {
-            // Find the parent category
-            const parentResult = await this.dbService.find({
-                params: { _id: createCategory.parent }
-            });
-            const parentCategory = parentResult[0];
-            
-            if (parentCategory) {
-                // Initialize children array if it doesn't exist
-                if (!Array.isArray(parentCategory.children)) {
-                    parentCategory.children = [];
+    // Process children if they exist in createCategory
+    if (createCategory.children && Array.isArray(createCategory.children)) {
+        console.log('Processing children:', {
+            categoryName: updatedCategory.name,
+            childrenCount: createCategory.children.length
+        });
+
+        for (const createChild of createCategory.children) {
+            try {
+                if (!createChild) continue;
+
+                console.log('Processing child:', {
+                    childName: createChild.name,
+                    childId: createChild._id,
+                    parentName: updatedCategory.name
+                });
+
+                // Find existing child
+                const existingChild = updatedCategory.children.find(
+                    child => child && 
+                    ((child.createUuid && child.createUuid === createChild.createUuid) ||
+                     (child._id && child._id === createChild._id))
+                );
+
+                if (existingChild) {
+                    // Update existing child
+                    console.log('Updating existing child:', createChild.name);
+                    const updatedChild = await this.getUpdatedCategory(existingChild, createChild);
+                    
+                    // Update the child in the array
+                    const index = updatedCategory.children.indexOf(existingChild);
+                    updatedCategory.children[index] = updatedChild;
+                } else {
+                    // Create new child
+                    console.log('Creating new child:', createChild.name);
+                    const newChild = new Category();
+                    newChild._id = createChild._id || new ObjectID().toHexString();
+                    newChild.name = createChild.name;
+                    newChild.createUuid = createChild.createUuid;
+                    newChild.parent = updatedCategory._id;
+                    newChild.active = createChild.active !== undefined ? createChild.active : true;
+                    newChild.createdDate = createChild.createdDate || new Date();
+                    newChild.createCreatedDate = createChild.createCreatedDate || new Date();
+                    newChild.modifiedDate = new Date();
+                    newChild.children = [];
+
+                    updatedCategory.children.push(newChild);
                 }
-                
-                // Add this category as a child to the parent
-                updatedCategory.parent = parentCategory._id;
-                parentCategory.children.push(updatedCategory);
-                
-                // Update the parent category
-                await this.dbService.update({
-                    params: { _id: parentCategory._id },
-                    body: parentCategory
+            } catch (error) {
+                console.error('Error processing child:', error, {
+                    childName: createChild?.name,
+                    parentName: updatedCategory.name
                 });
             }
-        } catch (error) {
-            console.error('Error updating parent category:', error);
         }
-    }
-
-    // Deactivate any children that are not in the createCategory
-    const remainingChildren = updatedCategory.children.filter(
-        child => child && !createChildren.some(createChild => createChild && createChild.createUuid === child.createUuid)
-    );
-    
-    for (let child of remainingChildren) {
-        child.active = false;
-        child.modifiedDate = new Date();
     }
 
     console.log('Finished updating category:', {
