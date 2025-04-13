@@ -1,76 +1,58 @@
-name: Deploy to Kubernetes
-
 on:
-  repository_dispatch:
-    types: [deploy-categories]
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: 'Git SHA to deploy'
-        required: true
-        default: 'latest'
+  push:
+    branches:
+      - main
+    # paths:
+    #   - 'config/**'
+    #   - 'site/**'
+    #   - 'Dockerfile'
+    #   - '.github/workflows/**'
 
 jobs:
-  deploy:
-    name: Deploy to Kubernetes
+  build:
+    name: Build, push, and deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Get deployment parameters
-        id: params
-        run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "SHA=${{ github.event.client_payload.sha }}" >> $GITHUB_OUTPUT
-          else
-            echo "SHA=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
-          fi
-          
+      - name: Checkout master
+        uses: actions/checkout@master
+
+      - name: Update SHA
+        run: echo $GITHUB_SHA > $GITHUB_WORKSPACE/helm/notes
+
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          
-      - name: Set up kubectl
-        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 1800 3b23a2dd-3391-4d1a-a478-e2a5564de99c
-      
-      - name: Check cluster status
-        run: kubectl get nodes
-        
-      # Direct deployment update - simplest approach
-      - name: Update deployment image
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push.
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: kasparov112000/learnbytesting-categories-do:latest
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.MYTOKEN }}
+
+      - name: Save DigitalOcean kubeconfig with short-lived credentials
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
+
+      - name: Save DigitalOcean kubeconfig with short-lived credentials
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
+
+      - name: Prep helm chart
         run: |
-          # Set image tag to use
-          TAG="${{ steps.params.outputs.SHA }}"
-          if [ "$TAG" = "latest" ]; then
-            IMAGE="kasparov112000/learnbytesting-categories-do:latest"
-          else
-            IMAGE="kasparov112000/learnbytesting-categories-do:$TAG"
-          fi
-          
-          echo "Updating deployment to use image: $IMAGE"
-          
-          # Update the image
-          kubectl set image deployment/categories categories=$IMAGE
-          
-          # Wait a bit to see if pods start updating
-          echo "Waiting to see if deployment starts..."
-          sleep 10
-          
-      # Add timestamp annotation to force restart if needed
-      - name: Force rollout if needed
-        run: |
-          # Check if pods are already updating
-          UPDATING=$(kubectl get pods -l app=categories -o json | grep "Pending\|ContainerCreating" || echo "")
-          if [ -z "$UPDATING" ]; then
-            echo "No pods updating, forcing restart with timestamp annotation..."
-            TIMESTAMP=$(date +%s)
-            kubectl patch deployment categories -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kubectl.kubernetes.io/restartedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
-          else
-            echo "Pods already updating, no need to force restart"
-          fi
-          
-      # Wait for deployment to complete
-      - name: Wait for rollout to complete
-        run: |
-          kubectl rollout status deployment/categories --timeout=2m
-          echo "Current pod status:"
-          kubectl get pods -l app=categories -o wide
+          mv ./helm/Chart.yaml ./helm/Chart.old.yaml &&
+          cat ./helm/Chart.old.yaml | grep -v appVersion > ./helm/Chart.yaml &&
+          echo -e "\r\nappVersion: v${GITHUB_REF##*/}\r\n" >> ./helm/Chart.yaml &&
+          cat ./helm/Chart.yaml
+      - name: Deploy
+        uses: WyriHaximus/github-action-helm3@v2
+        with:
+          exec: helm upgrade categories ./helm/ --install --wait --atomic --set=app.name=categories --values=./helm/values.yaml
+          kubeconfig: '${{ secrets.KUBECONFIG }}'
