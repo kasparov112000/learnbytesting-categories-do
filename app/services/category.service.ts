@@ -361,48 +361,77 @@ private hasNestedItems(category: any): boolean {
     category: Category,
     createCategory: Category
   ): Promise<Category> {
-    const updatedCategory = Object.assign(new Category(), category);
+    // Create a new category instance and ensure it has all required properties
+    const updatedCategory = new Category();
     
-    // Initialize children arrays
+    // Copy existing properties if they exist
+    if (category) {
+        Object.assign(updatedCategory, category);
+    }
+    
+    // Initialize or ensure children arrays exist
     updatedCategory.children = Array.isArray(updatedCategory.children) ? updatedCategory.children : [];
-    const createChildren = Array.isArray(createCategory.children) ? createCategory.children : [];
+    const createChildren = Array.isArray(createCategory?.children) ? createCategory.children : [];
     
     // Set basic properties
-    updatedCategory._id = updatedCategory._id || new ObjectID().toHexString();
+    updatedCategory._id = updatedCategory._id || createCategory._id || new ObjectID().toHexString();
     updatedCategory.createdDate = updatedCategory.createdDate || new Date();
     updatedCategory.name = createCategory.name;
-    updatedCategory.createCreatedDate = createCategory.createCreatedDate;
-    updatedCategory.active = createCategory.active || true;
+    updatedCategory.createCreatedDate = createCategory.createCreatedDate || new Date();
+    updatedCategory.active = createCategory.active !== undefined ? createCategory.active : true;
     updatedCategory.createUuid = createCategory.createUuid;
     updatedCategory.parent = createCategory.parent;
 
+    console.log('Processing category:', {
+        name: updatedCategory.name,
+        id: updatedCategory._id,
+        childrenCount: createChildren.length
+    });
+
     // Process each child category
     for (let createChild of createChildren) {
-        // Try to find existing child
-        let existingChildIndex = updatedCategory.children.findIndex(
-            child => child.createUuid === createChild.createUuid
-        );
+        try {
+            // Ensure createChild is properly structured
+            if (!createChild) continue;
 
-        if (existingChildIndex !== -1) {
-            // Update existing child
-            let updatedChild = await this.getUpdatedCategory(
-                updatedCategory.children[existingChildIndex],
-                createChild
+            console.log('Processing child:', {
+                name: createChild.name,
+                id: createChild._id,
+                createUuid: createChild.createUuid
+            });
+
+            // Try to find existing child
+            let existingChildIndex = updatedCategory.children.findIndex(
+                child => child && child.createUuid === createChild.createUuid
             );
-            updatedChild.modifiedDate = new Date();
-            updatedChild.parent = updatedCategory._id;
-            updatedCategory.children[existingChildIndex] = updatedChild;
-        } else {
-            // Create new child
-            const newChild = new Category();
-            newChild.createUuid = createChild.createUuid;
-            newChild.parent = updatedCategory._id;
-            newChild.name = createChild.name;
-            newChild.active = true;
-            newChild.createdDate = new Date();
-            newChild.createCreatedDate = createChild.createCreatedDate;
-            newChild.children = [];
-            updatedCategory.children.push(newChild);
+
+            if (existingChildIndex !== -1) {
+                // Update existing child
+                console.log('Updating existing child:', createChild.name);
+                let updatedChild = await this.getUpdatedCategory(
+                    updatedCategory.children[existingChildIndex],
+                    createChild
+                );
+                updatedChild.modifiedDate = new Date();
+                updatedChild.parent = updatedCategory._id;
+                updatedCategory.children[existingChildIndex] = updatedChild;
+            } else {
+                // Create new child
+                console.log('Creating new child:', createChild.name);
+                const newChild = new Category();
+                newChild.createUuid = createChild.createUuid;
+                newChild.parent = updatedCategory._id;
+                newChild.name = createChild.name;
+                newChild.active = true;
+                newChild.createdDate = new Date();
+                newChild.createCreatedDate = createChild.createCreatedDate || new Date();
+                newChild.children = [];
+                newChild._id = createChild._id || new ObjectID().toHexString();
+                updatedCategory.children.push(newChild);
+            }
+        } catch (error) {
+            console.error('Error processing child category:', error);
+            continue;
         }
     }
 
@@ -438,13 +467,19 @@ private hasNestedItems(category: any): boolean {
 
     // Deactivate any children that are not in the createCategory
     const remainingChildren = updatedCategory.children.filter(
-        child => !createChildren.some(createChild => createChild.createUuid === child.createUuid)
+        child => child && !createChildren.some(createChild => createChild && createChild.createUuid === child.createUuid)
     );
     
     for (let child of remainingChildren) {
         child.active = false;
         child.modifiedDate = new Date();
     }
+
+    console.log('Finished updating category:', {
+        name: updatedCategory.name,
+        id: updatedCategory._id,
+        childrenCount: updatedCategory.children.length
+    });
 
     return updatedCategory;
   }
