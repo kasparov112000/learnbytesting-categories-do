@@ -104,6 +104,14 @@ jobs:
           exec: helm upgrade categories ./helm/ --install --wait --atomic --timeout 15m --set=app.name=categories --values=./helm/values.yaml --debug
           kubeconfig: '${{ secrets.KUBECONFIG }}'
       
+      # Restart the deployment to ensure all pods are using the new image
+      - name: Restart Deployment
+        run: |
+          echo "=== Restarting deployment ==="
+          kubectl rollout restart deployment/categories
+          echo "=== Waiting for rollout to complete ==="
+          kubectl rollout status deployment/categories --timeout=5m
+      
       # Diagnostic logging after Helm attempt
       - name: Post-deployment diagnostics
         if: always()  # Run even if previous step failed
