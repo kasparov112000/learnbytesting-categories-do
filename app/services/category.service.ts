@@ -311,99 +311,155 @@ private hasNestedItems(category: any): boolean {
   }
 
   public async syncCreateCategories(req, res) {
-    const cats = new Array();
-    cats.push(req.body.categories);
-    const createCategories: Array<Category> = cats;
-    console.info("createCategories req.body", req.body);
-    console.info("createCategories cats", cats);
+    try {
+        const cats = new Array();
+        cats.push(req.body.categories);
+        const createCategories: Array<Category> = cats;
+        console.info("Processing categories:", JSON.stringify(createCategories, null, 2));
 
-    const linesOfService: Array<Category> = await this.dbService.find(req);
-    for (let createCategory of createCategories) {
-      console.info("createCategories createCategory", createCategory);
-      console.info("createCategories createCategories", createCategories);
+        const existingCategories: Array<Category> = await this.dbService.find(req);
+        
+        for (let createCategory of createCategories) {
+            // Find matching top-level category
+            let existingCategoryIndex = existingCategories.findIndex(
+                category => category.createUuid === createCategory.createUuid
+            );
 
-      let lineOfServiceIndex = linesOfService.findIndex(
-        (category) => category.createUuid === createCategory.createUuid
-      );
+            if (existingCategoryIndex !== -1) {
+                console.log("Updating existing category:", createCategory.name);
+                let existingCategory = existingCategories[existingCategoryIndex];
+                existingCategory = await this.getUpdatedCategory(existingCategory, createCategory);
+                await this.updateCategory(existingCategory);
+                existingCategories.splice(existingCategoryIndex, 1);
+            } else {
+                console.log("Creating new category:", createCategory.name);
+                const newCategory = new Category();
+                newCategory.createUuid = createCategory.createUuid;
+                const updatedCategory = await this.getUpdatedCategory(newCategory, createCategory);
+                await this.dbService.create(updatedCategory);
+            }
+        }
 
-      console.info("losindex", lineOfServiceIndex);
+        // Deactivate any remaining categories that weren't in the update
+        for (let category of existingCategories) {
+            category.active = false;
+            category.modifiedDate = new Date();
+            await this.updateCategory(category);
+        }
 
-      if (lineOfServiceIndex !== -1) {
-        console.log("Updating category: " + createCategory.name);
-        let lineOfService = linesOfService[lineOfServiceIndex];
-        lineOfService = this.getUpdatedCategory(lineOfService, createCategory);
-        await this.updateCategory(lineOfService);
-        linesOfService.splice(lineOfServiceIndex, 1);
-      } else {
-        console.log("Creating new category: " + createCategory.name);
-        const newCategory = new Category();
-        newCategory.createUuid = createCategory.createUuid;
-        await this.dbService.create(
-          this.getUpdatedCategory(newCategory, createCategory)
-        );
-      }
+        const updatedCategories = await this.dbService.find({ query: {}, params: {} });
+        console.log("Final categories state:", JSON.stringify(updatedCategories, null, 2));
+        
+        return this.handleResponse(updatedCategories, res);
+    } catch (error) {
+        console.error("Error in syncCreateCategories:", error);
+        return res.status(500).json({ error: "Failed to sync categories" });
     }
-
-    for (let lineOfService of linesOfService) {
-      lineOfService.active = false;
-      await this.updateCategory(lineOfService);
-    }
-
-    return this.handleResponse(
-      await this.dbService.find({ query: {}, params: {} }),
-      res
-    );
   }
 
-  public getUpdatedCategory(
+  public async getUpdatedCategory(
     category: Category,
     createCategory: Category
-  ): Category {
+  ): Promise<Category> {
     const updatedCategory = Object.assign(new Category(), category);
-    const missingChildren = Object.assign(
-      new Array<Category>(),
-      category.children
-    );
-
+    
+    // Initialize children arrays
+    updatedCategory.children = Array.isArray(updatedCategory.children) ? updatedCategory.children : [];
+    const createChildren = Array.isArray(createCategory.children) ? createCategory.children : [];
+    
+    // Set basic properties
     updatedCategory._id = updatedCategory._id || new ObjectID().toHexString();
     updatedCategory.createdDate = updatedCategory.createdDate || new Date();
     updatedCategory.name = createCategory.name;
     updatedCategory.createCreatedDate = createCategory.createCreatedDate;
-    updatedCategory.active = createCategory.active;
+    updatedCategory.active = createCategory.active || true;
+    updatedCategory.createUuid = createCategory.createUuid;
+    updatedCategory.parent = createCategory.parent;
 
-    for (let createSubCategory of createCategory.children) {
-      let subCategoryIndex = category.children.findIndex(
-        (child) => child.createUuid === createSubCategory.createUuid
-      );
-      console.log("subCategoryIndex", subCategoryIndex);
-      if (subCategoryIndex !== -1) {
-        let subCategory = this.getUpdatedCategory(
-          category.children[subCategoryIndex],
-          createSubCategory
+    // Process each child category
+    for (let createChild of createChildren) {
+        // Try to find existing child
+        let existingChildIndex = updatedCategory.children.findIndex(
+            child => child.createUuid === createChild.createUuid
         );
-        subCategory.modifiedDate = new Date();
-        category.children[subCategoryIndex] = subCategory;
-        missingChildren.splice(
-          missingChildren.findIndex(
-            (c) => c.createUuid === subCategory.createUuid
-          ),
-          1
-        );
-      } else {
-        const newCategory = new Category();
-        newCategory.parent = updatedCategory._id;
-        newCategory.createUuid = createSubCategory.createUuid;
-        updatedCategory.children.push(
-          this.getUpdatedCategory(newCategory, createSubCategory)
-        );
-      }
+
+        if (existingChildIndex !== -1) {
+            // Update existing child
+            let updatedChild = await this.getUpdatedCategory(
+                updatedCategory.children[existingChildIndex],
+                createChild
+            );
+            updatedChild.modifiedDate = new Date();
+            updatedChild.parent = updatedCategory._id;
+            updatedCategory.children[existingChildIndex] = updatedChild;
+        } else {
+            // Create new child
+            const newChild = new Category();
+            newChild.createUuid = createChild.createUuid;
+            newChild.parent = updatedCategory._id;
+            newChild.name = createChild.name;
+            newChild.active = true;
+            newChild.createdDate = new Date();
+            newChild.createCreatedDate = createChild.createCreatedDate;
+            newChild.children = [];
+            updatedCategory.children.push(newChild);
+        }
     }
 
-    for (let child of missingChildren) {
-      child.active = false;
+    // If this is a new category being added
+    if (!category._id && createCategory.parent) {
+        try {
+            // Find the parent category
+            const parentResult = await this.dbService.find({
+                params: { _id: createCategory.parent }
+            });
+            const parentCategory = parentResult[0];
+            
+            if (parentCategory) {
+                // Initialize children array if it doesn't exist
+                if (!Array.isArray(parentCategory.children)) {
+                    parentCategory.children = [];
+                }
+                
+                // Add this category as a child to the parent
+                updatedCategory.parent = parentCategory._id;
+                parentCategory.children.push(updatedCategory);
+                
+                // Update the parent category
+                await this.dbService.update({
+                    params: { _id: parentCategory._id },
+                    body: parentCategory
+                });
+            }
+        } catch (error) {
+            console.error('Error updating parent category:', error);
+        }
+    }
+
+    // Deactivate any children that are not in the createCategory
+    const remainingChildren = updatedCategory.children.filter(
+        child => !createChildren.some(createChild => createChild.createUuid === child.createUuid)
+    );
+    
+    for (let child of remainingChildren) {
+        child.active = false;
+        child.modifiedDate = new Date();
     }
 
     return updatedCategory;
+  }
+
+  // Helper method to find a category by ID
+  private async findCategoryById(categoryId: string): Promise<Category | null> {
+    try {
+        const result = await this.dbService.find({
+            params: { _id: categoryId }
+        });
+        return result[0] || null;
+    } catch (error) {
+        console.error('Error finding category by ID:', error);
+        return null;
+    }
   }
 
   private async updateCategory(lineOfService: Category) {

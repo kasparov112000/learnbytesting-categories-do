@@ -59,9 +59,17 @@ jobs:
     - name: Deploy with updated image
       uses: WyriHaximus/github-action-helm3@v2
       with:
-          exec: helm upgrade categories ./helm/ --install --wait --atomic --set=app.name=categories --set=image.tag=${GITHUB_SHA::8} --values=./helm/values.yaml
+          exec: helm upgrade categories ./helm/ --install --timeout 10m --wait --set=app.name=categories --set=image.tag=${GITHUB_SHA::8} --values=./helm/values.yaml
           kubeconfig: '${{ secrets.KUBECONFIG }}'
 
-    # Optional: Force a rollout restart if needed
-    - name: Force rollout restart
-      run: kubectl rollout restart deployment/categories
+    # Get kubectl access for debugging and restart
+    - name: Setup kubectl
+      run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
+
+    # Force a rollout restart and verify
+    - name: Force rollout restart and monitor
+      run: |
+        kubectl get pods -l app=categories -o wide
+        kubectl rollout restart deployment/categories
+        # Wait for the rollout to complete with a timeout
+        kubectl rollout status deployment/categories --timeout=5m
