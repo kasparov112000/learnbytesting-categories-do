@@ -67,49 +67,17 @@ export abstract class DbMicroServiceBase {
 
 
 public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllCategories) {
-
-    let parentConditions:any = {
-        name: categoryName,
-        // active: true
-    };
+    let parentConditions:any = {};
     let result;
-
-    // If not an admin and not getting all categories, only show active categories
+    
+    // Only apply category filters if not admin and not getting all categories
     if (!isAdmin && !getAllCategories) {
-        parentConditions.active = true;
+        parentConditions = {
+            name: categoryName,
+            active: true
+        };
 
-            // Aggregate to match the parent category and filter the subcategory and its children
-     result = await category.aggregate([
-        {
-            $match: parentConditions // Match the parent category
-        },
-        {
-            $project: {
-                // Project only the required fields
-                _id: 1,
-                name: 1,
-                children: {
-                    $filter: {
-                        input: "$children", // Array of children at this level
-                        as: "child",
-                        cond: {
-                            $and: [
-                                { $eq: ["$$child.name", subCategoryName] }, // Match the subcategory name
-                                // { $or: [ 
-                                // { $eq: [isAdmin, true] },
-                                // { $eq: ["$$child.active", true] }] } // Filter by active only if not admin
-                            ]
-                        }
-                    }
-                }
-            }
-        },
-        { 
-            $unwind: "$children" // Unwind to get only the matching subcategory and its children
-        }
-    ]).exec();
-    } else {
-        // Aggregate to match the parent category and include all subcategories and their children
+        // Aggregate to match the parent category and filter the subcategory and its children
         result = await category.aggregate([
             {
                 $match: parentConditions // Match the parent category
@@ -119,18 +87,35 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
                     // Project only the required fields
                     _id: 1,
                     name: 1,
+                    children: {
+                        $filter: {
+                            input: "$children", // Array of children at this level
+                            as: "child",
+                            cond: {
+                                $and: [
+                                    { $eq: ["$$child.name", subCategoryName] }, // Match the subcategory name
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            { 
+                $unwind: "$children" // Unwind to get only the matching subcategory and its children
+            }
+        ]).exec();
+    } else {
+        // For admin or getAllCategories, get all categories without filtering
+        result = await category.aggregate([
+            {
+                $project: {
+                    _id: 1,
+                    name: 1,
                     children: 1 // Include all children without filtering
                 }
             }
         ]).exec();
-
     }
-
-
-
-  //  if (!isAdmin && !getAllCategories) {
-        result = result.map(parent => this.filterNonActiveChildren(parent));
-  //  }
 
     return this.handlePagedResponse({ result, count: 0 }, res);
 }

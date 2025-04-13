@@ -452,17 +452,44 @@ private hasNestedItems(category: any): boolean {
     const mainCategory = { ...userInfo.mainCategory[0], children: [] };
     const category = {...userInfo.category[0], children: []};
 
-    const isAdmin = true;
-      // currentUser?.roles?.filter(
-      //   (role) => role?.name === "System Administrator"
-      // ).length > 0 || currentUser['https://learnbytesting_ai/roles'].includes("Admin");
+    const isAdmin = currentUser?.roles?.filter(
+      (role) => role?.name === "System Administrator"
+    ).length > 0 || currentUser['https://learnbytesting_ai/roles']?.includes("Admin");
+
+    console.log("Debug - User Info:", {
+      userInfo,
+      currentUser,
+      isAdmin,
+      getAllCategories,
+      mainCategory,
+      category
+    });
+
     console.log("currentUser should have data", currentUser);
     const countCategories: number = currentUser?.linesOfService?.length || 0;
     console.log("countCategories should be 0", countCategories);
 
     if (isAdmin || getAllCategories) {
-      let resp = await super.getSubCategory(mainCategory.name, category.name, res, isAdmin, getAllCategories);
-    return resp;
+      console.log("Debug - Admin or getAllCategories is true, getting all categories");
+      // When admin, ignore the category filters and get all categories
+      let resp = await super.getSubCategory(null, null, res, isAdmin, getAllCategories);
+      
+      // Create a new response object to avoid circular references
+      const responseData = {
+        statusCode: res.statusCode,
+        data: resp?.result || resp,
+        mainCategory: mainCategory,
+        category: category
+      };
+      
+      // Log only the relevant data without circular references
+      console.log("Debug - Response data:", {
+        statusCode: responseData.statusCode,
+        mainCategory: responseData.mainCategory,
+        category: responseData.category,
+        data: responseData.data
+      });
+      return resp;
     }
 
     const idArr = currentUser?.linesOfService?.map((lineOfService) => {
@@ -472,7 +499,25 @@ private hasNestedItems(category: any): boolean {
     req.params["_id"] = { $in: idArr };
     req.params["active"] = true;
 
-    return super.getSubCategory(mainCategory.name, category.name, res, isAdmin, getAllCategories);
+    console.log("Debug - Getting filtered categories");
+    let filteredResp = await super.getSubCategory(mainCategory.name, category.name, res, isAdmin, getAllCategories);
+    
+    // Create a new response object to avoid circular references
+    const filteredResponseData = {
+      statusCode: res.statusCode,
+      data: filteredResp?.result || filteredResp,
+      mainCategory: mainCategory,
+      category: category
+    };
+    
+    // Log only the relevant data without circular references
+    console.log("Debug - Filtered response data:", {
+      statusCode: filteredResponseData.statusCode,
+      mainCategory: filteredResponseData.mainCategory,
+      category: filteredResponseData.category,
+      data: filteredResponseData.data
+    });
+    return filteredResp;
   }
 
   private async  filterByCategory2(userInfo, res) {
