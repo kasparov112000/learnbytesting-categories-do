@@ -500,28 +500,60 @@ private hasNestedItems(category: any): boolean {
     if (newCategory.children && newCategory.children.length > 0) {
       console.log('getUpdatedCategory - Processing children:', {
         newChildrenCount: newCategory.children.length,
-        existingChildrenCount: existingCategory.children?.length || 0
+        existingChildrenCount: existingCategory.children?.length || 0,
+        newChildren: JSON.stringify(newCategory.children),
+        existingChildren: JSON.stringify(existingCategory.children)
       });
 
-      updatedCategory.children = newCategory.children.map(child => {
-        const updatedChild = new Category();
-        Object.assign(updatedChild, child);
-        
-        // Set parent reference
-        if (!updatedChild.parent) {
-          updatedChild.parent = existingCategory._id.toString();
-        }
-        
-        return updatedChild;
+      // Ensure children array exists and is initialized
+      updatedCategory.children = existingCategory.children || [];
+      console.log('getUpdatedCategory - Initialized children array:', {
+        childrenLength: updatedCategory.children.length,
+        children: JSON.stringify(updatedCategory.children)
       });
+
+      // Process each new child
+      for (const newChild of newCategory.children) {
+        console.log('getUpdatedCategory - Processing new child:', {
+          newChild: JSON.stringify(newChild)
+        });
+
+        // Find existing child by ID or createUuid
+        const existingChildIndex = updatedCategory.children.findIndex(child => 
+          child && (child._id === newChild._id || child.createUuid === newChild.createUuid)
+        );
+
+        console.log('getUpdatedCategory - Child search result:', {
+          existingChildIndex,
+          childFound: existingChildIndex !== -1
+        });
+
+        if (existingChildIndex !== -1) {
+          // Update existing child
+          console.log('getUpdatedCategory - Updating existing child:', {
+            existingChild: JSON.stringify(updatedCategory.children[existingChildIndex])
+          });
+          Object.assign(updatedCategory.children[existingChildIndex], newChild);
+        } else {
+          // Add new child
+          console.log('getUpdatedCategory - Adding new child');
+          const newChildInstance = new Category();
+          Object.assign(newChildInstance, newChild);
+          if (!newChildInstance.parent) {
+            newChildInstance.parent = existingCategory._id.toString();
+          }
+          updatedCategory.children.push(newChildInstance);
+        }
+      }
     } else {
       console.log('getUpdatedCategory - No new children, using existing:', {
-        existingChildrenCount: existingCategory.children?.length || 0
+        existingChildrenCount: existingCategory.children?.length || 0,
+        existingChildren: JSON.stringify(existingCategory.children)
       });
       updatedCategory.children = existingCategory.children || [];
     }
 
-    console.log('getUpdatedCategory - Result:', {
+    console.log('getUpdatedCategory - Final result:', {
       updatedCategory: JSON.stringify(updatedCategory)
     });
     
