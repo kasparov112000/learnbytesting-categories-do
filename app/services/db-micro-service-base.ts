@@ -1,10 +1,11 @@
 import { DbServiceBase } from './db-service-base';
 import { ApiResponseHelper } from './utilities';
 import { ApiResponse, PagedApiResponse, MdrApplicationUser } from 'hipolito-models';
-import { DbPagedResults, category } from '../models';
+import { DbPagedResults } from '../models';
 import { Request } from '@root/request';
 import { UnauthorizedException } from './errors/unauthorized-exception';
 import { ObjectId } from 'mongodb';
+import { Category } from '../models/category.model';
 
 export abstract class DbMicroServiceBase {
     protected dbService: DbServiceBase;
@@ -50,7 +51,7 @@ export abstract class DbMicroServiceBase {
 
         // Aggregate to filter parent documents and their nested items
         
-        let result = await  category.aggregate([
+        let result = await Category.aggregate([
           {
             $match: parentConditions
           },
@@ -78,7 +79,7 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
         };
 
         // Aggregate to match the parent category and filter the subcategory and its children
-        result = await category.aggregate([
+        result = await Category.aggregate([
             {
                 $match: parentConditions // Match the parent category
             },
@@ -117,7 +118,7 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
         }));
     } else {
         // For admin or getAllCategories, get all categories without filtering
-        result = await category.aggregate([
+        result = await Category.aggregate([
             {
                 $project: {
                     _id: 1,
@@ -145,100 +146,56 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
     return this.handlePagedResponse({ result, count: result.length }, res);
 }
 
-public async getSubCategory2(categoryName: string, subCategoryName: string, res: any, isAdmin: boolean, categoryId: string) {
-    console.log('Input parameters:', {
-        categoryName,
-        subCategoryName,
-        isAdmin,
-        categoryId
-    });
+public async getSubCategory2(mainCategory: string, categoryName: string, res, isAdmin: boolean, categoryId: string) {
+    let parentConditions = {};
+    if (isAdmin) {
+        parentConditions = {};
+    } else {
+        parentConditions = { active: true };
+    }
 
-    let parentConditions: any = {
-        name: categoryName,
-    };
+    let result = await Category.aggregate([
+        {
+            $match: parentConditions
+        },
+        {
+            $lookup: {
+                from: 'subcategories',
+                localField: '_id',
+                foreignField: 'parentCategoryId',
+                as: 'subcategories'
+            }
+        },
+        {
+            $unwind: {
+                path: '$subcategories',
+                preserveNullAndEmptyArrays: true
+            }
+        },
+        {
+            $match: {
+                'subcategories.mainCategoryId': mainCategory,
+                'subcategories._id': categoryId
+            }
+        },
+        {
+            $group: {
+                _id: '$_id',
+                parentCategory: { $first: '$$ROOT' },
+                subcategories: { $push: '$subcategories' }
+            }
+        }
+    ]).exec();
 
     if (!isAdmin) {
-        parentConditions.active = true;
+        result = result.map(parent => this.filterNonActiveChildren(parent));
     }
 
-    try {
-        // Verify the ObjectId is valid
-        let objectId;
-        try {
-            objectId = new ObjectId(categoryId);
-            console.log('Valid ObjectId created:', objectId);
-        } catch (error) {
-            console.error('Invalid ObjectId:', categoryId, error);
-            return [];
-        }
-
-        const pipeline = [
-            {
-                $match: parentConditions
-            },
-            {
-                $project: {
-                    _id: 1,
-                    name: 1,
-                    categoryMatch: {
-                        $filter: {
-                            input: "$children",
-                            as: "child",
-                            cond: {
-                                $eq: [
-                                    { $toString: "$$child._id" },
-                                    categoryId
-                                ]
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                $match: {
-                    "categoryMatch": { $ne: [] }
-                }
-            },
-            {
-                $project: {
-                    _id: 1,
-                    name: 1,
-                    children: { $arrayElemAt: ["$categoryMatch", 0] }
-                }
-            }
-        ];
-
-        console.log('Aggregation pipeline:', JSON.stringify(pipeline, null, 2));
-
-        const result = await category.aggregate(pipeline).exec();
-        
-        console.log('Raw result:', JSON.stringify(result, null, 2));
-
-        if (result.length === 0) {
-            console.log('No results found after aggregation');
-            return [];
-        }
-
-        const processedResult = result.map(parent => {
-            console.log('Processing parent:', parent._id);
-            if (!isAdmin) {
-                return this.filterNonActiveChildren(parent);
-            }
-            return parent;
-        });
-
-        console.log('Final processed result:', JSON.stringify(processedResult, null, 2));
-        
-        return processedResult;
-
-    } catch (error) {
-        console.error('Error in getSubCategory2:', error);
-        throw error;
-    }
+    return this.handlePagedResponse({ result, count: 0 }, res);
 }
 
 
-    public async getNestedByCategory(idArr, res, isAdmin, getAllCategories, mainCategoryId, categoryId, category) {
+    public async getNestedByCategory(idArr, res, isAdmin, getAllCategories, mainCategoryId, categoryId) {
         let parentConditions = {};
         if (isAdmin || getAllCategories) {
             parentConditions = idArr ? { _id: { $in: idArr } } : {};
@@ -246,16 +203,15 @@ public async getSubCategory2(categoryName: string, subCategoryName: string, res:
             parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
         }
     
-        // Aggregate to filter parent documents and their nested items
-        let result = await category.aggregate([
+        let result = await Category.aggregate([
             {
                 $match: parentConditions
             },
             {
                 $lookup: {
-                    from: 'subcategories', // Replace with the actual collection name for subcategories
+                    from: 'subcategories',
                     localField: '_id',
-                    foreignField: 'parentCategoryId', // Replace with the actual field name for parent category reference
+                    foreignField: 'parentCategoryId',
                     as: 'subcategories'
                 }
             },
@@ -361,17 +317,14 @@ public async getSubCategory2(categoryName: string, subCategoryName: string, res:
     }
 
     public formatSearch(req) {
-        if (req.query['category._id']) {
-          const cat = 'category._id';      
-          const catId =  req.query['category._id'];
-          const o_id = new ObjectId(catId); 
-          req.params = {'category._id': o_id};    
-        } else if(req.query['category.name']) {
-            const catName = 'category.name';
-            const catNameValue = req.query['category.name'];
-            req.params = {'category.name': catNameValue}
+        if (req.query['Category._id']) {
+            const catId = req.query['Category._id'];
+            req.params = {'Category._id': catId};    
+        } else if(req.query['Category.name']) {
+            const catNameValue = req.query['Category.name'];
+            req.params = {'Category.name': catNameValue}
         }
-      }
+    }
 
     protected handleErrorResponse<TResponse = any>(error, res): any {
         let apiErrorResponse: ApiResponse<TResponse>;

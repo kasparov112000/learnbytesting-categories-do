@@ -95,18 +95,10 @@ export abstract class DbServiceBase {
             throw new Error('Invalid data provided for update. Check the payload and that an id was passed to the service correctly.');
         }
 
-
-
-        const result = await this.dbModel.findOneAndUpdate({ 
-            _id: updateRequest.body._id 
-        }, [ {
-            $set: {
-                name: updateRequest.body.name,
-                children: updateRequest.body.children,
-                active: updateRequest.body.active,
-            }
-        }],
-        { new: true }
+        const result = await this.dbModel.findOneAndUpdate(
+            { _id: updateRequest.params.id },
+            updateRequest.body,
+            { new: true, runValidators: true }
         );
 
         if (this.connection.loggerEnabled) {
@@ -119,13 +111,11 @@ export abstract class DbServiceBase {
             throw new Error(`There was no data found based on the id "${updateRequest.params.id}" to update.`);
         }
 
-
-
         return result;
     }
 
     public async delete<TResult = any>(deleteRequest): Promise<TResult> {
-        return await this.dbModel.remove({ _id: new ObjectID(deleteRequest.params.id) });
+        return await this.dbModel.remove({ _id: deleteRequest.params.id });
     }
 
     protected async handlePagedResult<TResult>(query: Query<TResult, any>): Promise<DbPagedResults<TResult>> {
@@ -214,7 +204,7 @@ export abstract class DbServiceBase {
     }
 
     protected getParams(params): any {
-    console.log('params: getParams ', params);
+        console.log('params: getParams ', params);
         if (!params) {
             return;
         }
@@ -229,7 +219,7 @@ export abstract class DbServiceBase {
                 }
             });
 
-        return filterObject
+        return filterObject;
     }
 
     private debug(info?: string, debugObject?: any): void {

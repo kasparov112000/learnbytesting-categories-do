@@ -8,6 +8,13 @@ export interface ICategory extends Document {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  children?: ICategory[];
+  active?: boolean;
+  createUuid?: string;
+  parent?: string;
+  createdDate?: Date;
+  modifiedDate?: Date;
+  createCreatedDate?: Date;
 }
 
 const CategorySchema = new Schema<ICategory>(
@@ -17,12 +24,20 @@ const CategorySchema = new Schema<ICategory>(
     description: { type: String },
     parentId: { type: String },
     isActive: { type: Boolean, default: true },
+    active: { type: Boolean, default: true },
+    createUuid: { type: String },
+    parent: { type: String },
+    children: [{ type: Schema.Types.Mixed }],
     createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
+    updatedAt: { type: Date, default: Date.now },
+    createdDate: { type: Date, default: Date.now },
+    modifiedDate: { type: Date, default: Date.now },
+    createCreatedDate: { type: Date, default: Date.now }
   },
   {
     timestamps: true,
-    _id: false // Disable automatic _id generation
+    _id: false, // Disable automatic _id generation
+    id: false // Disable virtual id getter
   }
 );
 

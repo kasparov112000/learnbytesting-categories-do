@@ -7,9 +7,9 @@
     "description": "Auto-generated Armadillo Template.",
     "main": "./app/server.ts",
     "scripts": {
-        "build": "tsc --module commonjs",
         "start": "node ./app/server.js",
-        "start:build": "npm run build && node ./build/index.js",
+        "build": "tsc --module commonjs",
+        "start:build": "npm run build && node ./build/app/server.js",
         "start:dev": "npm-run-all --parallel lint:watch start:watch",
         "start:watch": "ts-node-dev --respawn --transpile-only ./app/server.ts",
         "start:debug-docker": "docker-compose -f 'docker-compose.dev.yml' up -d --build",

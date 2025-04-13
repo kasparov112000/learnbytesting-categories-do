@@ -6,6 +6,7 @@ import { IServerSideGetRowsRequest } from "ag-grid-community";
 import { MongoDBUtilities } from "../utils/utilities";
 import * as moment from "moment";
 import { GridFilterSearchHelper } from "../helpers/gridFilterSearchHelper";
+import crypto from "crypto";
 
 type GridServerSideRowRequest = Partial<IServerSideGetRowsRequest> & {
   search: { search: string; inflightStart: Date; inflightEnd: Date };
@@ -416,7 +417,7 @@ private hasNestedItems(category: any): boolean {
 
     // Update in database
     await this.dbService.update({
-      params: { _id: updatedCategory._id },
+      params: { id: updatedCategory._id },
       body: updatedCategory
     });
 
@@ -429,7 +430,7 @@ private hasNestedItems(category: any): boolean {
     const newCategory = new Category();
     
     // Set basic properties
-    newCategory._id = categoryData._id || new ObjectID().toHexString();
+    newCategory._id = categoryData._id || crypto.randomUUID();
     newCategory.name = categoryData.name;
     newCategory.active = categoryData.active ?? true;
     newCategory.createUuid = categoryData.createUuid;
