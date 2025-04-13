@@ -84,26 +84,37 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
             },
             {
                 $project: {
-                    // Project only the required fields
                     _id: 1,
                     name: 1,
                     children: {
                         $filter: {
-                            input: "$children", // Array of children at this level
+                            input: "$children",
                             as: "child",
                             cond: {
                                 $and: [
-                                    { $eq: ["$$child.name", subCategoryName] }, // Match the subcategory name
+                                    { $eq: ["$$child.name", subCategoryName] },
+                                    { $eq: ["$$child.active", true] }
                                 ]
                             }
                         }
                     }
                 }
-            },
-            { 
-                $unwind: "$children" // Unwind to get only the matching subcategory and its children
             }
         ]).exec();
+
+        // If no results found, return empty array with proper structure
+        if (!result || result.length === 0) {
+            return this.handlePagedResponse({ 
+                result: [{ _id: null, name: categoryName, children: [] }], 
+                count: 0 
+            }, res);
+        }
+
+        // Ensure each result has a children array
+        result = result.map(item => ({
+            ...item,
+            children: item.children || []
+        }));
     } else {
         // For admin or getAllCategories, get all categories without filtering
         result = await category.aggregate([
@@ -111,13 +122,27 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
                 $project: {
                     _id: 1,
                     name: 1,
-                    children: 1 // Include all children without filtering
+                    children: 1
                 }
             }
         ]).exec();
+
+        // If no results found, return empty array with proper structure
+        if (!result || result.length === 0) {
+            return this.handlePagedResponse({ 
+                result: [{ _id: null, name: categoryName, children: [] }], 
+                count: 0 
+            }, res);
+        }
+
+        // Ensure each result has a children array
+        result = result.map(item => ({
+            ...item,
+            children: item.children || []
+        }));
     }
 
-    return this.handlePagedResponse({ result, count: 0 }, res);
+    return this.handlePagedResponse({ result, count: result.length }, res);
 }
 
 public async getSubCategory2(categoryName: string, subCategoryName: string, res: any, isAdmin: boolean, categoryId: string) {
