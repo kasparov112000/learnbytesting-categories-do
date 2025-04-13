@@ -351,11 +351,18 @@ private hasNestedItems(category: any): boolean {
   }
 
   private async updateExistingCategory(existingCategory: Category, createCategory: Category): Promise<Category> {
-    console.log("Updating category:", existingCategory.name);
+    console.log('updateExistingCategory - Input:', {
+      existingCategory: JSON.stringify(existingCategory),
+      createCategory: JSON.stringify(createCategory)
+    });
     
     // Create a new category instance with existing data
     const updatedCategory = new Category();
     Object.assign(updatedCategory, existingCategory);
+
+    console.log('updateExistingCategory - After initial assignment:', {
+      updatedCategory: JSON.stringify(updatedCategory)
+    });
 
     // Update basic properties
     updatedCategory.name = createCategory.name;
@@ -364,36 +371,53 @@ private hasNestedItems(category: any): boolean {
 
     // Ensure children array exists
     updatedCategory.children = Array.isArray(updatedCategory.children) ? updatedCategory.children : [];
+    console.log('updateExistingCategory - After basic updates:', {
+      updatedCategory: JSON.stringify(updatedCategory)
+    });
 
     // Process children if they exist
     if (createCategory.children && Array.isArray(createCategory.children)) {
-        const processedChildren = [];
-        
-        for (const childData of createCategory.children) {
-            if (!childData) continue;
+      console.log('updateExistingCategory - Processing children:', {
+        childrenCount: createCategory.children.length
+      });
+      
+      const processedChildren = [];
+      
+      for (const childData of createCategory.children) {
+        if (!childData) continue;
 
-            // Find existing child
-            const existingChild = updatedCategory.children.find(child => 
-                child && (child._id === childData._id || child.createUuid === childData.createUuid)
-            );
+        console.log('updateExistingCategory - Processing child:', {
+          childData: JSON.stringify(childData)
+        });
 
-            if (existingChild) {
-                const updatedChild = await this.updateExistingCategory(existingChild, childData);
-                processedChildren.push(updatedChild);
-            } else {
-                const newChild = await this.createNewCategory(childData);
-                newChild.parent = updatedCategory._id;
-                processedChildren.push(newChild);
-            }
+        // Find existing child
+        const existingChild = updatedCategory.children.find(child => 
+          child && (child._id === childData._id || child.createUuid === childData.createUuid)
+        );
+
+        if (existingChild) {
+          console.log('updateExistingCategory - Found existing child, updating');
+          const updatedChild = await this.updateExistingCategory(existingChild, childData);
+          processedChildren.push(updatedChild);
+        } else {
+          console.log('updateExistingCategory - Creating new child');
+          const newChild = await this.createNewCategory(childData);
+          newChild.parent = updatedCategory._id;
+          processedChildren.push(newChild);
         }
+      }
 
-        updatedCategory.children = processedChildren;
+      updatedCategory.children = processedChildren;
     }
+
+    console.log('updateExistingCategory - Final result:', {
+      updatedCategory: JSON.stringify(updatedCategory)
+    });
 
     // Update in database
     await this.dbService.update({
-        params: { _id: updatedCategory._id },
-        body: updatedCategory
+      params: { _id: updatedCategory._id },
+      body: updatedCategory
     });
 
     return updatedCategory;
@@ -454,6 +478,11 @@ private hasNestedItems(category: any): boolean {
   }
 
   public getUpdatedCategory(existingCategory: Category, newCategory: Category): Category {
+    console.log('getUpdatedCategory - Input:', {
+      existingCategory: JSON.stringify(existingCategory),
+      newCategory: JSON.stringify(newCategory)
+    });
+
     const updatedCategory = new Category();
     
     // Preserve existing IDs and dates
@@ -469,6 +498,11 @@ private hasNestedItems(category: any): boolean {
     
     // Handle children
     if (newCategory.children && newCategory.children.length > 0) {
+      console.log('getUpdatedCategory - Processing children:', {
+        newChildrenCount: newCategory.children.length,
+        existingChildrenCount: existingCategory.children?.length || 0
+      });
+
       updatedCategory.children = newCategory.children.map(child => {
         const updatedChild = new Category();
         Object.assign(updatedChild, child);
@@ -481,8 +515,15 @@ private hasNestedItems(category: any): boolean {
         return updatedChild;
       });
     } else {
+      console.log('getUpdatedCategory - No new children, using existing:', {
+        existingChildrenCount: existingCategory.children?.length || 0
+      });
       updatedCategory.children = existingCategory.children || [];
     }
+
+    console.log('getUpdatedCategory - Result:', {
+      updatedCategory: JSON.stringify(updatedCategory)
+    });
     
     return updatedCategory;
   }
