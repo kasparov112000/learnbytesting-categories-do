@@ -14,7 +14,7 @@ describe('Category Service', () => {
     describe('Updating a line of service', () => {
 
         let lineOfService: Category;
-        let lineOfServiceResult: Category;
+        let lineOfServiceResult: any;
 
         beforeEach(() => {
             lineOfService = Object.assign(new Category(), {
