@@ -1,12 +1,7 @@
 #
-# BASE
-#
-FROM scratch
-
-#
 # BUILD
 #
-FROM node:14
+FROM node:18-alpine
 WORKDIR /var/app
 
 ADD package.json .
@@ -18,12 +13,12 @@ RUN npm run build
 #
 # UNIT TESTING
 #
-FROM node:14
+FROM node:18-alpine
 
 ARG UNIT_TEST=no
 WORKDIR /var/app
 
-COPY --from=1 /var/app  /var/app
+COPY --from=0 /var/app  /var/app
 
 RUN if [ "${UNIT_TEST}" = "yes" ]; then \
     echo "**** UNIT TESTING ****"; \
@@ -33,23 +28,17 @@ RUN if [ "${UNIT_TEST}" = "yes" ]; then \
 #
 # RUNTIME
 #
-FROM node:14
+FROM node:18-alpine
 EXPOSE 3000
 ENV ENV_NAME=${ENV_NAME}
 
-# RUN groupadd pwcapp \
-    # && adduser --quiet --home /var/app --ingroup pwcapp --gecos 'PwC' --disabled-password pwcapp
-
 WORKDIR /var/app
 
-COPY --from=1 /var/app/package.json .
-# COPY --from=1 /var/app/.npmrc .
-COPY --from=1 /var/app/build .
-COPY --from=1 /var/app/docs ./docs/
+COPY --from=0 /var/app/package.json .
+# COPY --from=0 /var/app/.npmrc .
+COPY --from=0 /var/app/build .
+COPY --from=0 /var/app/docs ./docs/
 
-# RUN chown -R pwcapp:pwcapp /var/app
-
-# USER pwcapp 
 RUN npm install --production
 
 ENTRYPOINT ["npm", "start"]

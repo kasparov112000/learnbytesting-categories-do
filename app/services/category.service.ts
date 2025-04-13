@@ -450,14 +450,41 @@ private hasNestedItems(category: any): boolean {
   }
 
   private async updateCategory(lineOfService: Category) {
-    lineOfService.modifiedDate = new Date();
-    await this.dbService.update({
-      params: {
-        id: lineOfService._id,
-        name: lineOfService.name,
-      },
-      body: lineOfService,
-    });
+    return await this.dbService.update(lineOfService);
+  }
+
+  public getUpdatedCategory(existingCategory: Category, newCategory: Category): Category {
+    const updatedCategory = new Category();
+    
+    // Preserve existing IDs and dates
+    updatedCategory._id = existingCategory._id;
+    updatedCategory.createdDate = existingCategory.createdDate;
+    updatedCategory.modifiedDate = new Date();
+    
+    // Update with new values
+    updatedCategory.name = newCategory.name;
+    updatedCategory.createCreatedDate = newCategory.createCreatedDate;
+    updatedCategory.createUuid = newCategory.createUuid;
+    updatedCategory.active = newCategory.active;
+    
+    // Handle children
+    if (newCategory.children && newCategory.children.length > 0) {
+      updatedCategory.children = newCategory.children.map(child => {
+        const updatedChild = new Category();
+        Object.assign(updatedChild, child);
+        
+        // Set parent reference
+        if (!updatedChild.parent) {
+          updatedChild.parent = existingCategory._id.toString();
+        }
+        
+        return updatedChild;
+      });
+    } else {
+      updatedCategory.children = existingCategory.children || [];
+    }
+    
+    return updatedCategory;
   }
 
   private async filterLinesOfService(req, res) {
