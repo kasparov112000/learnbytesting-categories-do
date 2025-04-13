@@ -32,13 +32,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+    # Generate a unique tag using SHA
+    - name: Set up Docker tag with SHA
+      id: docker_tag
+      run: echo "TAG=kasparov112000/learnbytesting-categories-do:${GITHUB_SHA::8}" >> $GITHUB_ENV
 
-    - name: Build and push.
+    - name: Build and push with unique tag
       id: docker_build
       uses: docker/build-push-action@v2
       with:
           push: true
-          tags: kasparov112000/learnbytesting-categories-do:latest
+          tags: ${{ env.TAG }}
           secrets: |
             GIT_AUTH_TOKEN=${{ secrets.GIT_AUTH_TOKEN }}
 
@@ -51,8 +55,13 @@ jobs:
           cat ./helm/Chart.old.yaml | grep -v appVersion > ./helm/Chart.yaml &&
           echo -e "\r\nappVersion: v${GITHUB_REF##*/}\r\n" >> ./helm/Chart.yaml &&
           cat ./helm/Chart.yaml
-    - name: Deploy
+
+    - name: Deploy with updated image
       uses: WyriHaximus/github-action-helm3@v2
       with:
-          exec: helm upgrade categories ./helm/ --install --wait --atomic  --set=app.name=categories --values=./helm/values.yaml
+          exec: helm upgrade categories ./helm/ --install --wait --atomic --set=app.name=categories --set=image.tag=${GITHUB_SHA::8} --values=./helm/values.yaml
           kubeconfig: '${{ secrets.KUBECONFIG }}'
+
+    # Optional: Force a rollout restart if needed
+    - name: Force rollout restart
+      run: kubectl rollout restart deployment/categories
