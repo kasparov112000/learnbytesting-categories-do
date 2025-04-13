@@ -1,4 +1,4 @@
-on: 
+on:
   push:
     branches:
       - main
@@ -9,67 +9,129 @@ on:
     #   - '.github/workflows/**'
 
 jobs:
-
   build:
     name: Build, push, and deploy
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout master
+        uses: actions/checkout@master
 
-    - name: Checkout master
-      uses: actions/checkout@master
+      - name: Update SHA
+        run: echo $GITHUB_SHA > $GITHUB_WORKSPACE/helm/notes
 
-    - name: Update SHA
-      run: echo $GITHUB_SHA > $GITHUB_WORKSPACE/helm/notes
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-    - name: Install doctl
-      uses: digitalocean/action-doctl@v2
-      with:
-        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-  
-    - name: Login to DockerHub
-      uses: docker/login-action@v1
-      with:
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    # Generate a unique tag using SHA
-    - name: Set up Docker tag with SHA
-      id: docker_tag
-      run: echo "TAG=kasparov112000/learnbytesting-categories-do:${GITHUB_SHA::8}" >> $GITHUB_ENV
+      # Setup Docker buildx for better build capabilities
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-    - name: Build and push with unique tag
-      id: docker_build
-      uses: docker/build-push-action@v2
-      with:
+      # Fixed the build-push-action step
+      - name: Build and push.
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          context: .  # Use local context instead of Git URL
           push: true
-          tags: ${{ env.TAG }}
+          tags: kasparov112000/learnbytesting-categories-do:latest
+          # Pass GitHub token as a secret but using proper format
           secrets: |
-            GIT_AUTH_TOKEN=${{ secrets.GIT_AUTH_TOKEN }}
+            "GIT_AUTH_TOKEN=${{ secrets.MYTOKEN }}"
 
-    - name: Save DigitalOcean kubeconfig with short-lived credentials
-      run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
-    
-    - name: Prep helm chart
-      run: |
+      - name: Save DigitalOcean kubeconfig with short-lived credentials
+        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
+
+      # Diagnostic logging before Helm deployment
+      - name: Pre-deployment diagnostics
+        run: |
+          echo "=== Kubernetes Cluster Info ==="
+          kubectl cluster-info
+          
+          echo "=== Nodes Status ==="
+          kubectl get nodes -o wide
+          
+          echo "=== Current Deployments ==="
+          kubectl get deployments -o wide
+          
+          echo "=== Pods Status ==="
+          kubectl get pods -o wide
+          
+          echo "=== Events (last 5 minutes) ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+          
+          echo "=== Helm Releases ==="
+          helm list -A
+
+      - name: Prep helm chart
+        run: |
+          echo "=== Chart.yaml before modification ==="
+          cat ./helm/Chart.yaml
+          
           mv ./helm/Chart.yaml ./helm/Chart.old.yaml &&
           cat ./helm/Chart.old.yaml | grep -v appVersion > ./helm/Chart.yaml &&
-          echo -e "\r\nappVersion: v${GITHUB_REF##*/}\r\n" >> ./helm/Chart.yaml &&
+          echo -e "\r\nappVersion: v${GITHUB_REF##*/}\r\n" >> ./helm/Chart.yaml
+          
+          echo "=== Chart.yaml after modification ==="
           cat ./helm/Chart.yaml
-
-    - name: Deploy with updated image
-      uses: WyriHaximus/github-action-helm3@v2
-      with:
-          exec: helm upgrade categories ./helm/ --install --timeout 10m --wait --set=app.name=categories --set=image.tag=${GITHUB_SHA::8} --values=./helm/values.yaml
+          
+          echo "=== Contents of values.yaml ==="
+          cat ./helm/values.yaml
+      
+      # Verify other Helm-related files
+      - name: Check Helm templates
+        run: |
+          echo "=== List of template files ==="
+          find ./helm/templates -type f | sort
+          
+          echo "=== Validating helm chart ==="
+          helm lint ./helm/
+          
+          echo "=== Dry run of helm upgrade ==="
+          helm upgrade --dry-run categories ./helm/ --install --set=app.name=categories --values=./helm/values.yaml
+      
+      # Actual deployment with increased timeout
+      - name: Deploy
+        uses: WyriHaximus/github-action-helm3@v2
+        with:
+          exec: helm upgrade categories ./helm/ --install --wait --atomic --timeout 15m --set=app.name=categories --values=./helm/values.yaml --debug
           kubeconfig: '${{ secrets.KUBECONFIG }}'
-
-    # Get kubectl access for debugging and restart
-    - name: Setup kubectl
-      run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
-
-    # Force a rollout restart and verify
-    - name: Force rollout restart and monitor
-      run: |
-        kubectl get pods -l app=categories -o wide
-        kubectl rollout restart deployment/categories
-        # Wait for the rollout to complete with a timeout
-        kubectl rollout status deployment/categories --timeout=5m
+      
+      # Restart the deployment to ensure all pods are using the new image
+      - name: Restart Deployment
+        run: |
+          echo "=== Restarting deployment ==="
+          kubectl rollout restart deployment/categories
+          echo "=== Waiting for rollout to complete ==="
+          kubectl rollout status deployment/categories --timeout=5m
+      
+      # Diagnostic logging after Helm attempt
+      - name: Post-deployment diagnostics
+        if: always()  # Run even if previous step failed
+        run: |
+          echo "=== Helm Release Status ==="
+          helm status categories || echo "Release not found"
+          
+          echo "=== Updated Deployments ==="
+          kubectl get deployments -o wide
+          
+          echo "=== Updated Pods ==="
+          kubectl get pods -o wide
+          
+          echo "=== Recent Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -20
+          
+          echo "=== Pod Logs (if available) ==="
+          POD=$(kubectl get pods -l app=categories -o jsonpath="{.items[0].metadata.name}" 2>/dev/null) || echo "No pods found"
+          if [ -n "$POD" ]; then
+            kubectl logs $POD --tail=50 || echo "Could not get logs"
+            echo "=== Pod Description ==="
+            kubectl describe pod $POD || echo "Could not describe pod"
+          fi
