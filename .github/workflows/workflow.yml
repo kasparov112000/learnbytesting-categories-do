@@ -3,6 +3,7 @@ on:
     branches:
       - main
       - fix-build
+      - fix-build2
     # paths:
     #   - 'config/**'
     #   - 'site/**'
