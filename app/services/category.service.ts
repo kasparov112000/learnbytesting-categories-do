@@ -699,37 +699,47 @@ export class CategoryService extends DbMicroServiceBase {
     return filteredResp;
   }
 
-  private async filterByCategory2(userInfo) {
-    // const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
-   
-    // const userInfo = req?.body?.userInfo?.result || req?.body?.session?.user?.userInfo?.result;
-    // const currentUser: any = req.body.currentUser || userInfo;
-    //const getAllCategories: any = req.body.getAllCategories;
+  public async filterByCategory2(userInfo: any): Promise<any> {
+    console.log('filterByCategory2 - Input:', {
+      hasUserInfo: !!userInfo,
+      hasMainCategory: !!userInfo?.mainCategory,
+      mainCategoryLength: userInfo?.mainCategory?.length
+    });
+
+    if (!userInfo?.mainCategory?.length) {
+      console.log('filterByCategory2 - No main category found, returning empty result');
+      return { result: [], count: 0 };
+    }
+
     const mainCategory = { ...userInfo.mainCategory[0], children: [] };
-    const category = {...userInfo.category[0], children: []};
+    console.log('filterByCategory2 - Main category:', {
+      mainCategoryId: mainCategory._id,
+      mainCategoryName: mainCategory.name
+    });
+
+    const category = userInfo.mainCategory[0].children ? {
+      ...userInfo.mainCategory[0].children,
+      count: userInfo.mainCategory[0].children.length,
+    } : { count: 0, children: [] };
+
+    console.log('filterByCategory2 - Category:', {
+      categoryName: category.name,
+      childrenCount: category.count
+    });
+
+    const categories = userInfo.mainCategory[0].children || {};
+
+    console.log('filterByCategory2 - Categories:', {
+      hasCategories: !!categories,
+      categoriesCount: Object.keys(categories).length
+    });
 
     const isAdmin = true;
-      // currentUser?.roles?.filter(
-      //   (role) => role?.name === "System Administrator"
-      // ).length > 0 || currentUser['https://learnbytesting_ai/roles'].includes("Admin");
-    // console.log("currentUser should have data", currentUser);
-    const countCategories: number = 0; // currentUser?.linesOfService?.length || 0;
- 
-
     if (isAdmin) {
-      // Don't pass res object, just get the data
       let result = await super.getSubCategory2Data(mainCategory.name, category.name, isAdmin, category._id);
       return result;
     }
 
-    // const idArr = currentUser?.linesOfService?.map((lineOfService) => {
-    //   const o_id = new ObjectId(lineOfService._id);
-    //   return o_id;
-    //  });
-    //req.params["_id"] = { $in: idArr };
-    // req.params["active"] = true;
-
-    // Don't pass res object, just get the data
     return super.getSubCategory2Data(mainCategory.name, category.name, isAdmin, category.id);
   }
 
@@ -1112,29 +1122,4 @@ export class CategoryService extends DbMicroServiceBase {
       case "closedDealFinalOutcome":
         return `closedDeals.finalOutcome`;
       case "closedDealCalculatedValue":
-        return `closedDeals.calculatedValue`;
-      case "closedDealSoftCloseDate":
-        return `closedDeals.softCloseDate`;
-      case "closedDealHardCloseDate":
-        return `closedDeals.hardCloseDate`;
-      default:
-        return field;
-    }
-  }
-
-  private buildBreadCrumb(node, parentBreadCrumb = "") {
-    // Update the breadCrumb for the current node
-    node.breadCrumb = parentBreadCrumb
-      ? `${parentBreadCrumb} > ${node.name}`
-      : node.name;
-
-    // Recursively update breadCrumb for children
-    if (node.children) {
-      for (const child of node.children) {
-        this.buildBreadCrumb(child, node.breadCrumb);
-      }
-    }
-
-    return node;
-  }
-}
+        return `
