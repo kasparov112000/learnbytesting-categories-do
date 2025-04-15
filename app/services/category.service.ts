@@ -142,14 +142,15 @@ export class CategoryService extends DbMicroServiceBase {
     userInfo,
     res,
     txnId
-): Promise<any> {
-    let results = await this.filterByCategory2(userInfo, res);
+  ): Promise<any> {
+    // Don't pass res to filterByCategory2
+    let results = await this.filterByCategory2(userInfo);
     console.log('1. Initial results:', {
-        hasResults: !!results?.length,
-        firstResult: results?.[0]
+        hasResults: !!results?.result?.length,
+        firstResult: results?.result?.[0]
     });
     
-    if (!results?.length) {
+    if (!results?.result?.length) {
         return res.status(200).json({ 
             rows: [], 
             lastRow: 0, 
@@ -159,36 +160,35 @@ export class CategoryService extends DbMicroServiceBase {
         });
     }
 
-    const mainCategory = { ...results[0], children: [] };
-    const category = results[0].children ? {
-        ...results[0].children,
-        count: results[0].children.length,
+    const mainCategory = { ...results.result[0], children: [] };
+    const category = results.result[0].children ? {
+        ...results.result[0].children,
+        count: results.result[0].children.length,
     } : { count: 0, children: [] };
 
-    const categories = results[0].children || {};
+    const categories = results.result[0].children || {};
 
     console.log('5. Before mapping children:', {
-        hasNestedChildren: !!results[0].children?.children,
-        nestedChildrenCount: results[0].children?.children?.length,
-        nestedChildren: results[0].children?.children
+        hasNestedChildren: !!results.result[0].children?.children,
+        nestedChildrenCount: results.result[0].children?.children?.length,
+        nestedChildren: results.result[0].children?.children
     });
 
     // Modified this part to properly handle the breadcrumb
-    results = results[0].children?.children?.map(
+    let mappedResults = results.result[0].children?.children?.map(
         (category) => ({
             ...category,
             breadcrumb: `Chess > ${category.name}`,  // Using parent category name
-            parent: results[0].children.name  // Store parent name
+            parent: results.result[0].children.name  // Store parent name
         })
     ) || [];
 
     console.log('6. After mapping children:', {
-        resultsLength: results.length,
-        mappedResults: results
+        resultsLength: mappedResults.length,
+        mappedResults: mappedResults
     });
 
-    // Replace the flattenNestedStructure call with direct array
-    let allCategories = results;  // Since we don't need to flatten further
+    let allCategories = mappedResults;  // Since we don't need to flatten further
     console.log('7. Categories structure:', {
         categoriesLength: allCategories.length,
         categories: allCategories
@@ -234,14 +234,14 @@ export class CategoryService extends DbMicroServiceBase {
         mainCategory, 
         category 
     });
-}
+  }
 
-// Helper method to check if a category has any nested items
-private hasNestedItems(category: any): boolean {
+  // Helper method to check if a category has any nested items
+  private hasNestedItems(category: any): boolean {
     return category && 
            Array.isArray(category.children) && 
            category.children.length > 0;
-}
+  }
 
   public async search(req, res) {
     let results = await this.dbService.findAll();
@@ -562,7 +562,8 @@ private hasNestedItems(category: any): boolean {
     updatedCategory.createCreatedDate = newCategory.createCreatedDate;
     updatedCategory.createUuid = newCategory.createUuid;
     updatedCategory.active = newCategory.active;
-    
+    updatedCategory.children = [];
+
     // Handle children
     if (newCategory.children && newCategory.children.length > 0) {
       console.log('getUpdatedCategory - Processing children:', {
@@ -572,13 +573,6 @@ private hasNestedItems(category: any): boolean {
         existingChildren: JSON.stringify(existingCategory.children)
       });
 
-      // Ensure children array exists and is initialized
-      updatedCategory.children = existingCategory.children || [];
-      console.log('getUpdatedCategory - Initialized children array:', {
-        childrenLength: updatedCategory.children.length,
-        children: JSON.stringify(updatedCategory.children)
-      });
-
       // Process each new child
       for (const newChild of newCategory.children) {
         console.log('getUpdatedCategory - Processing new child:', {
@@ -586,31 +580,42 @@ private hasNestedItems(category: any): boolean {
         });
 
         // Find existing child by ID or createUuid
-        const existingChildIndex = updatedCategory.children.findIndex(child => 
+        const existingChild = existingCategory.children?.find(child => 
           child && (child._id === newChild._id || child.createUuid === newChild.createUuid)
         );
 
         console.log('getUpdatedCategory - Child search result:', {
-          existingChildIndex,
-          childFound: existingChildIndex !== -1
+          childFound: !!existingChild,
+          existingChild: existingChild ? JSON.stringify(existingChild) : null
         });
 
-        if (existingChildIndex !== -1) {
-          // Update existing child
-          console.log('getUpdatedCategory - Updating existing child:', {
-            existingChild: JSON.stringify(updatedCategory.children[existingChildIndex])
-          });
-          Object.assign(updatedCategory.children[existingChildIndex], newChild);
+        const updatedChild = new Category();
+        if (existingChild) {
+          // Preserve existing child's ID and parent
+          updatedChild._id = existingChild._id;
+          updatedChild.parent = existingChild.parent;
         } else {
-          // Add new child
-          console.log('getUpdatedCategory - Adding new child');
-          const newChildInstance = new Category();
-          Object.assign(newChildInstance, newChild);
-          if (!newChildInstance.parent) {
-            newChildInstance.parent = existingCategory._id.toString();
-          }
-          updatedCategory.children.push(newChildInstance);
+          // Set parent for new child
+          updatedChild.parent = updatedCategory._id.toString();
         }
+
+        // Update child properties
+        updatedChild.name = newChild.name;
+        updatedChild.createCreatedDate = newChild.createCreatedDate;
+        updatedChild.createUuid = newChild.createUuid;
+        updatedChild.active = newChild.active;
+        updatedChild.children = newChild.children || [];
+
+        // Process grandchildren if they exist
+        if (updatedChild.children.length > 0) {
+          for (const grandChild of updatedChild.children) {
+            if (!grandChild.parent) {
+              grandChild.parent = updatedChild._id.toString();
+            }
+          }
+        }
+
+        updatedCategory.children.push(updatedChild);
       }
     } else {
       console.log('getUpdatedCategory - No new children, using existing:', {
@@ -694,7 +699,7 @@ private hasNestedItems(category: any): boolean {
     return filteredResp;
   }
 
-  private async  filterByCategory2(userInfo, res) {
+  private async filterByCategory2(userInfo) {
     // const userData = await getUserDataHelper.getUserData(req.body.currentUser._id);
    
     // const userInfo = req?.body?.userInfo?.result || req?.body?.session?.user?.userInfo?.result;
@@ -712,18 +717,20 @@ private hasNestedItems(category: any): boolean {
  
 
     if (isAdmin) {
-      let resp = await super.getSubCategory2(mainCategory.name, category.name, res, isAdmin, category._id);
-    return resp;
+      // Don't pass res object, just get the data
+      let result = await super.getSubCategory2Data(mainCategory.name, category.name, isAdmin, category._id);
+      return result;
     }
 
     // const idArr = currentUser?.linesOfService?.map((lineOfService) => {
     //   const o_id = new ObjectId(lineOfService._id);
     //   return o_id;
-   //  });
+    //  });
     //req.params["_id"] = { $in: idArr };
     // req.params["active"] = true;
 
-    return super.getSubCategory2(mainCategory.name, category.name, res, isAdmin, category.id);
+    // Don't pass res object, just get the data
+    return super.getSubCategory2Data(mainCategory.name, category.name, isAdmin, category.id);
   }
 
   private getGridFilter(

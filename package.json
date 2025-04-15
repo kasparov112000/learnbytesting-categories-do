@@ -26,19 +26,6 @@
         "lint": "esw src --color",
         "lint:watch": "esw src --color --watch"
     },
-    "jest": {
-        "coverageReporters": [
-            "text"
-        ],
-        "reporters": [
-            "default",
-            "jest-junit"
-        ]
-    },
-    "jest-junit": {
-        "output": "output/coverage/junit/junit.xml",
-        "usePathForSuiteName": "true"
-    },
     "repository": {
         "type": "git",
         "url": "/category.git"

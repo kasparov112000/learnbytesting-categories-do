@@ -147,6 +147,13 @@ public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllC
 }
 
 public async getSubCategory2(mainCategory: string, categoryName: string, res, isAdmin: boolean, categoryId: string) {
+    // Call the new data-only method and handle the response here
+    const resultData = await this.getSubCategory2Data(mainCategory, categoryName, isAdmin, categoryId);
+    return this.handlePagedResponse(resultData, res);
+}
+
+// New method that returns data without sending a response
+public async getSubCategory2Data(mainCategory: string, categoryName: string, isAdmin: boolean, categoryId: string) {
     let parentConditions = {};
     if (isAdmin) {
         parentConditions = {};
@@ -191,7 +198,8 @@ public async getSubCategory2(mainCategory: string, categoryName: string, res, is
         result = result.map(parent => this.filterNonActiveChildren(parent));
     }
 
-    return this.handlePagedResponse({ result, count: 0 }, res);
+    // Return the data without sending a response
+    return { result, count: 0 };
 }
 
 
