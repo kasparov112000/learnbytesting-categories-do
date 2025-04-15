@@ -1,15 +1,38 @@
 import { DbMicroServiceBase } from "./db-micro-service-base";
 import { Category, MdrApplicationUser } from "hipolito-models";
 import { ObjectID, ObjectId } from "mongodb";
-import { has, isEmpty, isEqual, trim } from "lodash";
+import { has, isEmpty, isEqual, trim, orderBy } from "lodash";
 import { IServerSideGetRowsRequest } from "ag-grid-community";
 import { MongoDBUtilities } from "../utils/utilities";
 import * as moment from "moment";
 import { GridFilterSearchHelper } from "../helpers/gridFilterSearchHelper";
 import crypto from "crypto";
+import { Request, Response } from "express";
+import { v4 as uuidv4 } from "uuid";
+
+// Define placeholder types (adjust if actual types are known)
+interface CategoryGridItem extends Category {
+  breadcrumb?: string;
+  parent?: string;
+}
+interface GridResponse<T> {
+  rows: T[];
+  lastRow: number;
+  categories?: any;
+  mainCategory?: any;
+  category?: any;
+}
+
+// Define local interface for sort model items
+interface GridSortItem {
+  colId: string;
+  sort: 'asc' | 'desc';
+}
 
 type GridServerSideRowRequest = Partial<IServerSideGetRowsRequest> & {
   search: { search: string; inflightStart: Date; inflightEnd: Date };
+  // Ensure sortModel uses the local type if it exists on the extended type
+  sortModel?: GridSortItem[]; 
 };
 
 export class CategoryService extends DbMicroServiceBase {
@@ -138,102 +161,125 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   public async gridFlatten(
-    params: GridServerSideRowRequest,
-    userInfo,
-    res,
-    txnId
-  ): Promise<any> {
-    // Don't pass res to filterByCategory2
-    let results = await this.filterByCategory2(userInfo);
-    console.log('1. Initial results:', {
-        hasResults: !!results?.result?.length,
-        firstResult: results?.result?.[0]
-    });
-    
-    if (!results?.result?.length) {
-        return res.status(200).json({ 
-            rows: [], 
-            lastRow: 0, 
-            categories: {}, 
-            mainCategory: {}, 
-            category: {} 
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const txnId = uuidv4();
+      
+      if (!req?.body) {
+        console.log("gridFlatten - Invalid request body");
+        res.json({
+          rows: [],
+          lastRow: 0,
+          categories: {},
+          mainCategory: {},
+          category: {},
         });
-    }
+        return;
+      }
 
-    const mainCategory = { ...results.result[0], children: [] };
-    const category = results.result[0].children ? {
-        ...results.result[0].children,
-        count: results.result[0].children.length,
-    } : { count: 0, children: [] };
-
-    const categories = results.result[0].children || {};
-
-    console.log('5. Before mapping children:', {
-        hasNestedChildren: !!results.result[0].children?.children,
-        nestedChildrenCount: results.result[0].children?.children?.length,
-        nestedChildren: results.result[0].children?.children
-    });
-
-    // Modified this part to properly handle the breadcrumb
-    let mappedResults = results.result[0].children?.children?.map(
-        (category) => ({
-            ...category,
-            breadcrumb: `Chess > ${category.name}`,  // Using parent category name
-            parent: results.result[0].children.name  // Store parent name
-        })
-    ) || [];
-
-    console.log('6. After mapping children:', {
-        resultsLength: mappedResults.length,
-        mappedResults: mappedResults
-    });
-
-    let allCategories = mappedResults;  // Since we don't need to flatten further
-    console.log('7. Categories structure:', {
-        categoriesLength: allCategories.length,
-        categories: allCategories
-    });
-
-    let categoriesResult = allCategories;
-
-    if (params) {
-        console.log('8. Grid params:', {
-            filterModel: params.filterModel,
-            startRow: params.startRow,
-            endRow: params.endRow
+      const params = req.body.params || req.body.session?.body || req.body;
+      const userInfo = req.body.userInfo || req.body.session?.user?.userInfo;
+      const currentUser = req.body.currentUser || userInfo;
+      
+      if (!currentUser) {
+        console.log("gridFlatten - No user info provided");
+        res.json({
+          rows: [],
+          lastRow: 0,
+          categories: {},
+          mainCategory: {},
+          category: {},
         });
+        return;
+      }
 
-        categoriesResult = GridFilterSearchHelper.handleSearchFilter(
-            params.filterModel,
-            allCategories
+      const isAdmin = currentUser?.roles?.some(role => role?.name === "System Administrator") || 
+                     currentUser['https://learnbytesting_ai/roles']?.includes("Admin");
+
+      console.log("gridFlatten - Input:", {
+        hasParams: !!params,
+        hasUserInfo: !!userInfo,
+        isAdmin
+      });
+
+      // Get initial data
+      const initialResults = await this.filterByCategory2(userInfo);
+      console.log("1. Initial results:", {
+        hasResults: !!initialResults,
+        resultLength: initialResults?.result?.length
+      });
+
+      if (!initialResults || !initialResults.result || initialResults.result.length === 0) {
+        console.log("gridFlatten - No results found");
+        res.json({
+          rows: [],
+          lastRow: 0,
+          categories: {},
+          mainCategory: {},
+          category: {},
+        });
+        return;
+      }
+
+      // Flatten the nested structure
+      let flattenedCategories = this.flattenNestedStructure(initialResults.result);
+      console.log("2. Flattened categories:", {
+        count: flattenedCategories.length,
+        sample: flattenedCategories[0]
+      });
+
+      // Apply filtering if needed
+      if (params?.filterModel) {
+        flattenedCategories = GridFilterSearchHelper.handleSearchFilter(
+          params.filterModel,
+          flattenedCategories
         )[0];
-        console.log('9. After search filter:', {
-            resultLength: categoriesResult.length,
-            filteredResults: categoriesResult
+        console.log("3. After filtering:", {
+          count: flattenedCategories.length
         });
+      }
 
-        categoriesResult = this.sortCategories(params, categoriesResult);
-        console.log('10. After sorting:', {
-            resultLength: categoriesResult.length
+      // Apply sorting
+      if (params?.sortModel?.length > 0) {
+        flattenedCategories = this.sortData(flattenedCategories, params.sortModel);
+        console.log("4. After sorting:", {
+          count: flattenedCategories.length
         });
+      }
+
+      // Apply pagination
+      const startRow = parseInt(params?.startRow?.toString() || "0", 10);
+      const endRow = parseInt(params?.endRow?.toString() || flattenedCategories.length.toString(), 10);
+      const paginatedData = flattenedCategories.slice(startRow, endRow);
+
+      console.log("5. Final response:", {
+        total: flattenedCategories.length,
+        pageSize: paginatedData.length,
+        startRow,
+        endRow
+      });
+
+      res.json({
+        rows: paginatedData,
+        lastRow: flattenedCategories.length,
+        categories: initialResults.result[0]?.children || {},
+        mainCategory: initialResults.result[0] || {},
+        category: initialResults.result[0]?.children || {}
+      });
+
+    } catch (error) {
+      console.error('Error in gridFlatten:', error);
+      res.json({
+        rows: [],
+        lastRow: 0,
+        categories: {},
+        mainCategory: {},
+        category: {},
+        error: 'An error occurred while processing the request'
+      });
     }
-
-    const start = parseInt(params?.startRow?.toString() || "", 10);
-    const end = parseInt(params?.endRow?.toString() || "", 10);
-
-    const slicedCategories = this.sliceArray(categoriesResult, start, end);
-    console.log('12. Final sliced categories:', {
-        slicedLength: slicedCategories.length,
-        slicedData: slicedCategories
-    });
-
-    return res.status(200).json({ 
-        rows: slicedCategories, 
-        lastRow: categoriesResult.length, 
-        categories, 
-        mainCategory, 
-        category 
-    });
   }
 
   // Helper method to check if a category has any nested items
@@ -702,9 +748,26 @@ export class CategoryService extends DbMicroServiceBase {
   public async filterByCategory2(userInfo: any): Promise<any> {
     console.log('filterByCategory2 - Input:', {
       hasUserInfo: !!userInfo,
-      hasMainCategory: !!userInfo?.mainCategory,
-      mainCategoryLength: userInfo?.mainCategory?.length
+      userInfoType: typeof userInfo,
+      userInfoKeys: userInfo ? Object.keys(userInfo) : [],
+      mainCategory: userInfo?.mainCategory,
+      category: userInfo?.category,
+      mainCategoryType: userInfo?.mainCategory ? typeof userInfo.mainCategory : 'undefined',
+      mainCategoryLength: userInfo?.mainCategory?.length,
+      categoryLength: userInfo?.category?.length
     });
+
+    const isAdmin = true;
+    if (isAdmin) {
+      console.log('filterByCategory2 - Getting all categories for admin');
+      let result = await super.getSubCategory2Data('', '', isAdmin, '');
+      console.log('filterByCategory2 - Subcategory result:', {
+        hasResult: !!result,
+        resultKeys: result ? Object.keys(result) : [],
+        resultLength: result?.result?.length
+      });
+      return result;
+    }
 
     if (!userInfo?.mainCategory?.length) {
       console.log('filterByCategory2 - No main category found, returning empty result');
@@ -714,7 +777,8 @@ export class CategoryService extends DbMicroServiceBase {
     const mainCategory = { ...userInfo.mainCategory[0], children: [] };
     console.log('filterByCategory2 - Main category:', {
       mainCategoryId: mainCategory._id,
-      mainCategoryName: mainCategory.name
+      mainCategoryName: mainCategory.name,
+      mainCategoryKeys: Object.keys(mainCategory)
     });
 
     const category = userInfo.mainCategory[0].children ? {
@@ -724,22 +788,19 @@ export class CategoryService extends DbMicroServiceBase {
 
     console.log('filterByCategory2 - Category:', {
       categoryName: category.name,
-      childrenCount: category.count
+      categoryId: category._id,
+      childrenCount: category.count,
+      categoryKeys: Object.keys(category)
     });
 
     const categories = userInfo.mainCategory[0].children || {};
-
     console.log('filterByCategory2 - Categories:', {
       hasCategories: !!categories,
-      categoriesCount: Object.keys(categories).length
+      categoriesCount: Object.keys(categories).length,
+      categoriesKeys: Object.keys(categories)
     });
 
-    const isAdmin = true;
-    if (isAdmin) {
-      let result = await super.getSubCategory2Data(mainCategory.name, category.name, isAdmin, category._id);
-      return result;
-    }
-
+    console.log('filterByCategory2 - Getting subcategory data for non-admin');
     return super.getSubCategory2Data(mainCategory.name, category.name, isAdmin, category.id);
   }
 
@@ -1024,59 +1085,41 @@ export class CategoryService extends DbMicroServiceBase {
     };
   }
 
-  private flattenNestedStructure(categories: any[], subNodeName = 'Angular') {
-    let result: any = [];
+  private flattenNestedStructure(categories: any[]): any[] {
+    let result: any[] = [];
 
-    // Helper function to flatten nodes
-    const flatten = (node) => {
-        result.push({
-            name: node.name,
-            breadCrumb: node.breadCrumb,
-            createdDate: node.createdDate,
-            active: node.active,
+    const flatten = (node: any, parentPath = '') => {
+      if (!node) return;
+
+      // Create flattened item
+      const flatItem = {
+        _id: node._id,
+        name: node.name,
+        active: node.active,
+        createdDate: node.createdDate,
+        modifiedDate: node.modifiedDate,
+        createUuid: node.createUuid,
+        parent: node.parent,
+        breadcrumb: parentPath ? `${parentPath} > ${node.name}` : node.name
+      };
+
+      result.push(flatItem);
+
+      // Recursively flatten children
+      if (node.children && Array.isArray(node.children)) {
+        node.children.forEach((child: any) => {
+          flatten(child, flatItem.breadcrumb);
         });
-
-        if (node.children && node.children.length > 0) {
-            node.children.forEach((child) => {
-                flatten(child);
-            });
-        }
+      }
     };
 
-    // Traverse the main node to find the subNode
-    const findSubNode = (node) => {
-        console.log('Traversing node:', node.name);  // Log the node being traversed
-
-        if (typeof node.name === 'string' 
-        //  && node.name.trim() === subNodeName
-        ) {
-            console.log('Found subNode:', node.name);  // Log when the subNode is found
-            // Found the subNode, flatten its children
-            if (node.children && node.children.length > 0) {
-                node.children.forEach((child) => {
-                    flatten(child);
-                });
-            }
-        } else if (node.children && node.children.length > 0) {
-            // Continue searching in the children
-            node.children.forEach((child) => {
-                findSubNode(child);
-            });
-        }
-    };
-
-    // Loop through all categories in the array
-    categories.forEach((category) => {
-        findSubNode(category);
+    // Process each root category
+    categories.forEach(category => {
+      flatten(category);
     });
 
     return result;
-}
-
-
-  
-  
-  
+  }
 
   private convertFieldToFlatKey(field: string) {
     switch (field) {
@@ -1136,5 +1179,22 @@ export class CategoryService extends DbMicroServiceBase {
     }
 
     return node;
+  }
+
+  // Add helper method for sorting data
+  private sortData(data: any[], sortModel: GridSortItem[]): any[] {
+    if (!sortModel || sortModel.length === 0) {
+      return data;
+    }
+    // Filter out sortModel items that don't have a sort direction (shouldn't happen with GridSortItem but good practice)
+    const validSortModel = sortModel.filter(s => s.sort);
+    if (validSortModel.length === 0) {
+        return data;
+    }
+
+    const sortKeys = validSortModel.map(s => s.colId);
+    const sortOrders = validSortModel.map(s => s.sort);
+
+    return orderBy(data, sortKeys, sortOrders);
   }
 }

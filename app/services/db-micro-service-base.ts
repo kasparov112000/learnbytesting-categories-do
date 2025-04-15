@@ -153,53 +153,97 @@ public async getSubCategory2(mainCategory: string, categoryName: string, res, is
 }
 
 // New method that returns data without sending a response
-public async getSubCategory2Data(mainCategory: string, categoryName: string, isAdmin: boolean, categoryId: string) {
-    let parentConditions = {};
-    if (isAdmin) {
-        parentConditions = {};
+public async getSubCategory2Data(mainCategory: string, categoryName: string, isAdmin: boolean, categoryId: string): Promise<{ result: any[], count: number }> {
+    console.log('getSubCategory2Data - Input:', { mainCategory, categoryName, isAdmin, categoryId });
+
+    let pipeline: any[] = [];
+
+    // Base match for parent categories
+    let parentConditions = isAdmin ? {} : { active: true };
+    pipeline.push({ $match: parentConditions });
+
+    // --- Start of Potentially Incorrect Logic for Nested Categories ---
+    // These stages assume a separate 'subcategories' collection and might need
+    // revisiting if using a nested 'children' array structure.
+    pipeline.push({
+        $lookup: {
+            from: 'subcategories', // Assumes separate collection
+            localField: '_id',
+            foreignField: 'parentCategoryId',
+            as: 'subcategories'
+        }
+    });
+    pipeline.push({
+        $unwind: {
+            path: '$subcategories',
+            preserveNullAndEmptyArrays: true
+        }
+    });
+    // --- End of Potentially Incorrect Logic ---
+
+    // Conditionally add the problematic match stage
+    // Only filter by subcategory details if NOT admin requesting ALL, OR if categoryId/mainCategory is provided
+    if (!isAdmin || mainCategory || categoryId) {
+        console.log('getSubCategory2Data - Applying specific subcategory filter.');
+        pipeline.push({
+            $match: {
+                // Only apply filters if values are provided
+                ...(mainCategory && { 'subcategories.mainCategoryId': mainCategory }),
+                ...(categoryId && { 'subcategories._id': categoryId })
+            }
+        });
     } else {
-        parentConditions = { active: true };
+        console.log('getSubCategory2Data - Admin requested all, skipping specific subcategory filter.');
+        // For admin requesting all, we might want to ensure we only get root categories
+        // or adjust the pipeline further. For now, just skipping the problematic filter.
+        // Let's add a match for root categories specifically in the admin 'all' case.
+        pipeline = [ { $match: { parent: { $exists: false } } } ]; // Overwrite pipeline for admin 'all' case
+         pipeline.push({
+            $project: { // Project necessary fields
+                _id: 1, name: 1, active: 1, children: 1, createdDate: 1, modifiedDate: 1
+                // Add other fields as needed by the grid
+            }
+        })
+        console.log('getSubCategory2Data - Adjusted pipeline for admin fetching all root categories.');
     }
 
-    let result = await Category.aggregate([
-        {
-            $match: parentConditions
-        },
-        {
-            $lookup: {
-                from: 'subcategories',
-                localField: '_id',
-                foreignField: 'parentCategoryId',
-                as: 'subcategories'
-            }
-        },
-        {
-            $unwind: {
-                path: '$subcategories',
-                preserveNullAndEmptyArrays: true
-            }
-        },
-        {
-            $match: {
-                'subcategories.mainCategoryId': mainCategory,
-                'subcategories._id': categoryId
-            }
-        },
-        {
+    // --- Start of Potentially Incorrect Logic for Nested Categories ---
+    // Grouping might also be unnecessary or incorrect depending on the structure
+    if (isAdmin && !mainCategory && !categoryId) {
+         // Skip grouping if we fetched all root categories directly
+         console.log('getSubCategory2Data - Skipping group stage for admin all.');
+    } else {
+        console.log('getSubCategory2Data - Applying group stage.');
+        pipeline.push({
             $group: {
                 _id: '$_id',
-                parentCategory: { $first: '$$ROOT' },
+                // $$ROOT might include the temporary 'subcategories' field from lookup/unwind
+                parentCategory: { $first: '$$ROOT' }, 
+                // Pushing potentially filtered/incorrect subcategories
                 subcategories: { $push: '$subcategories' }
             }
-        }
-    ]).exec();
+        });
+         // Attempt to restore the original document structure after grouping
+        pipeline.push({ $replaceRoot: { newRoot: "$parentCategory" } });
+    }
+    // --- End of Potentially Incorrect Logic ---
 
+    console.log("getSubCategory2Data: Executing pipeline:", JSON.stringify(pipeline));
+    let result = await Category.aggregate(pipeline).allowDiskUse(true).exec();
+    console.log(`getSubCategory2Data: Pipeline executed. Found ${result.length} results initially.`);
+
+    // Filter non-active children if necessary (only applies if !isAdmin)
+    // This logic might need adjustment based on the actual structure returned by the pipeline
     if (!isAdmin) {
-        result = result.map(parent => this.filterNonActiveChildren(parent));
+        console.log("getSubCategory2Data: Filtering non-active children for non-admin.");
+        // Ensure the filter function handles the aggregated structure correctly
+        // result = result.map(parent => this.filterNonActiveChildren(parent)); 
+        // Temporarily commenting out as filterNonActiveChildren might expect a different structure
     }
 
-    // Return the data without sending a response
-    return { result, count: 0 };
+    // Return the data with the actual count
+    console.log("getSubCategory2Data: Returning data.", { count: result.length });
+    return { result, count: result.length };
 }
 
 

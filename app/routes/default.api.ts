@@ -19,10 +19,11 @@ export default function (app, express, serviceobject) {
   });
 
   router.post(`${baseUrl}/grid-flatten`, (req, res) => {
-    serviceobject.gridFlatten(req.body.params, req.body.userInfo, res);
+    serviceobject.gridFlatten(req, res);
   });
+
   router.post(`${baseUrl}/lbt-categories`, (req, res) => {
-    serviceobject.gridFlatten({ ...req.body.session.body }, res);
+    serviceobject.gridFlatten(req, res);
   });
 
   router.post(`${baseUrl}/search`, (req, res) => {
