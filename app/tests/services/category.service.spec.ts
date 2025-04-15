@@ -1,9 +1,10 @@
-import { CategoryService } from '../../services/category.service';
-import { Category } from '../../models/category';
-import { DbService } from '../../services/db-service-base';
+import { Category } from 'hipolito-models';
 import { DbMicroServiceBase } from '../../services/db-micro-service-base';
+import { CategoryService } from '../../services/category.service';
+import { DbService } from '../../services/db.service';
+import { ObjectId } from 'mongodb';
 
-jest.mock('../../services/db-service-base');
+jest.mock('../../services/db.service');
 
 describe('CategoryService', () => {
   let categoryService: CategoryService;
@@ -18,136 +19,184 @@ describe('CategoryService', () => {
     jest.clearAllMocks();
   });
 
-  describe('updateExistingCategory', () => {
-    it('should update a category with its children correctly', async () => {
+  describe('getUpdatedCategory', () => {
+    it('should update a category with new values while preserving existing IDs and dates', () => {
       const existingCategory = new Category();
-      Object.assign(existingCategory, {
-        _id: '123',
-        name: 'Chess',
-        children: [],
-        active: true
-      });
+      existingCategory._id = new ObjectId('5d2f350d1f6a9b3184b82e56').toString();
+      existingCategory.name = 'Existing Category';
+      existingCategory.createdDate = new Date('2023-01-01');
+      existingCategory.modifiedDate = new Date('2023-01-02');
+      existingCategory.children = [];
+      existingCategory.active = true;
+      existingCategory.createUuid = 'test-uuid';
+      existingCategory.createCreatedDate = new Date();
 
-      const createCategory = new Category();
-      Object.assign(createCategory, {
-        _id: '123',
-        name: 'Chess',
-        children: [
-          {
-            _id: '456',
-            name: 'Chess Openings',
-            children: [],
-            parent: '123',
-            active: true
-          }
-        ],
-        active: true
-      });
+      const newCategory = new Category();
+      newCategory.name = 'Updated Category';
+      newCategory.active = true;
+      newCategory.children = [];
+      newCategory.createUuid = 'new-uuid';
+      newCategory.createCreatedDate = new Date();
 
-      mockDbService.update.mockResolvedValue({
-        ...existingCategory,
-        children: createCategory.children
-      });
+      const updatedCategory = categoryService.getUpdatedCategory(existingCategory, newCategory);
 
-      const result = await (categoryService as any).updateExistingCategory(existingCategory, createCategory);
-
-      expect(result).toBeDefined();
-      expect(result.children).toHaveLength(1);
-      expect(result.children[0].name).toBe('Chess Openings');
-      expect(mockDbService.update).toHaveBeenCalledTimes(1);
+      expect(updatedCategory._id).toEqual(existingCategory._id);
+      expect(updatedCategory.name).toEqual(newCategory.name);
+      expect(updatedCategory.createdDate).toEqual(existingCategory.createdDate);
+      expect(updatedCategory.modifiedDate).not.toEqual(existingCategory.modifiedDate);
+      expect(updatedCategory.active).toEqual(newCategory.active);
+      expect(updatedCategory.children).toEqual([]);
     });
 
-    it('should handle nested children correctly', async () => {
+    it('should handle children categories correctly', () => {
       const existingCategory = new Category();
-      Object.assign(existingCategory, {
-        _id: '123',
-        name: 'Chess',
-        children: [],
-        active: true
-      });
+      existingCategory._id = new ObjectId('5d2f350d1f6a9b3184b82e56').toString();
+      existingCategory.name = 'Parent Category';
+      existingCategory.active = true;
+      existingCategory.createUuid = 'parent-uuid';
+      existingCategory.createCreatedDate = new Date();
+      existingCategory.children = [
+        {
+          _id: new ObjectId('5d2f350d1f6a9b3184b82e57').toString(),
+          name: 'Existing Child',
+          parent: existingCategory._id,
+          children: [],
+          active: true,
+          createUuid: 'child-uuid',
+          createCreatedDate: new Date(),
+          createdDate: new Date(),
+          modifiedDate: new Date()
+        }
+      ];
 
-      const createCategory = new Category();
-      Object.assign(createCategory, {
-        _id: '123',
-        name: 'Chess',
-        children: [
-          {
-            _id: '456',
-            name: 'Chess Openings',
-            children: [
-              {
-                _id: '789',
-                name: "Queen's Pawn Opening",
-                children: [],
-                parent: '456',
-                active: true
-              }
-            ],
-            parent: '123',
-            active: true
-          }
-        ],
-        active: true
-      });
+      const newCategory = new Category();
+      newCategory.name = 'Updated Parent';
+      newCategory.active = true;
+      newCategory.createUuid = 'new-parent-uuid';
+      newCategory.createCreatedDate = new Date();
+      newCategory.children = [
+        {
+          name: 'New Child',
+          children: [],
+          active: true,
+          createUuid: 'new-child-uuid',
+          createCreatedDate: new Date(),
+          createdDate: new Date(),
+          modifiedDate: new Date()
+        }
+      ];
 
-      mockDbService.update.mockResolvedValue({
-        ...existingCategory,
-        children: createCategory.children
-      });
+      const updatedCategory = categoryService.getUpdatedCategory(existingCategory, newCategory);
 
-      const result = await (categoryService as any).updateExistingCategory(existingCategory, createCategory);
-
-      expect(result).toBeDefined();
-      expect(result.children).toHaveLength(1);
-      expect(result.children[0].children).toHaveLength(1);
-      expect(result.children[0].children[0].name).toBe("Queen's Pawn Opening");
-      expect(mockDbService.update).toHaveBeenCalledTimes(1);
+      expect(updatedCategory.children.length).toBe(1);
+      expect(updatedCategory.children[0].name).toBe('New Child');
+      expect(updatedCategory.children[0].parent).toBe(existingCategory._id);
     });
   });
 
   describe('syncCreateCategories', () => {
-    it('should create or update categories based on request', async () => {
+    it('should update an existing category with new children', async () => {
+      const mockExistingCategory = new Category();
+      mockExistingCategory._id = new ObjectId('5d2f350d1f6a9b3184b82e56').toString();
+      mockExistingCategory.name = 'Chess';
+      mockExistingCategory.children = [];
+
       const req = {
         body: {
           categories: {
-            _id: '123',
+            _id: mockExistingCategory._id,
             name: 'Chess',
             children: [
               {
-                _id: '456',
                 name: 'Chess Openings',
                 children: [],
-                parent: '123',
-                active: true
+                active: true,
+                createUuid: 'chess-openings-uuid',
+                createCreatedDate: new Date(),
+                createdDate: new Date(),
+                modifiedDate: new Date()
               }
-            ],
-            active: true
+            ]
           }
         }
       };
 
-      const mockExistingCategory = new Category();
-      Object.assign(mockExistingCategory, {
-        _id: '123',
-        name: 'Chess',
-        children: [],
-        active: true
-      });
+      const res = {
+        send: jest.fn()
+      };
 
-      mockDbService.findOne.mockResolvedValue(mockExistingCategory);
-      mockDbService.update.mockResolvedValue({
+      mockDbService.find = jest.fn().mockResolvedValue([mockExistingCategory]);
+      mockDbService.update = jest.fn().mockResolvedValue({
         ...mockExistingCategory,
         children: req.body.categories.children
       });
 
-      const res = {
-        send: jest.fn(),
-        status: jest.fn().mockReturnThis()
+      await categoryService.syncCreateCategories(req, res);
+
+      expect(mockDbService.find).toHaveBeenCalledTimes(1);
+      expect(mockDbService.update).toHaveBeenCalledTimes(1);
+      expect(res.send).toHaveBeenCalled();
+    });
+
+    it('should handle nested children correctly', async () => {
+      const mockExistingCategory = new Category();
+      mockExistingCategory._id = new ObjectId('5d2f350d1f6a9b3184b82e56').toString();
+      mockExistingCategory.name = 'Chess';
+      mockExistingCategory.children = [
+        {
+          name: 'Chess Openings',
+          children: [],
+          active: true,
+          createUuid: 'chess-openings-uuid',
+          createCreatedDate: new Date(),
+          createdDate: new Date(),
+          modifiedDate: new Date()
+        }
+      ];
+
+      const req = {
+        body: {
+          categories: {
+            _id: mockExistingCategory._id,
+            name: 'Chess',
+            children: [
+              {
+                name: 'Chess Openings',
+                children: [
+                  {
+                    name: "Queen's Pawn Opening",
+                    children: [],
+                    active: true,
+                    createUuid: 'queens-pawn-uuid',
+                    createCreatedDate: new Date(),
+                    createdDate: new Date(),
+                    modifiedDate: new Date()
+                  }
+                ],
+                active: true,
+                createUuid: 'chess-openings-uuid',
+                createCreatedDate: new Date(),
+                createdDate: new Date(),
+                modifiedDate: new Date()
+              }
+            ]
+          }
+        }
       };
+
+      const res = {
+        send: jest.fn()
+      };
+
+      mockDbService.find = jest.fn().mockResolvedValue([mockExistingCategory]);
+      mockDbService.update = jest.fn().mockResolvedValue({
+        ...mockExistingCategory,
+        children: req.body.categories.children
+      });
 
       await categoryService.syncCreateCategories(req, res);
 
-      expect(mockDbService.findOne).toHaveBeenCalledTimes(1);
+      expect(mockDbService.find).toHaveBeenCalledTimes(1);
       expect(mockDbService.update).toHaveBeenCalledTimes(1);
       expect(res.send).toHaveBeenCalled();
     });
