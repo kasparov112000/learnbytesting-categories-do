@@ -1080,20 +1080,14 @@ export class CategoryService extends DbMicroServiceBase {
 
   private convertFieldToFlatKey(field: string) {
     switch (field) {
-      case "category":
-      case "exam":
-      case "client":
-        return `${field}.name`;
-      case "assigner":
-      case "initialDealAdvisorAssignment":
-      case "dealAdvisor1":
-      case "dealAdvisor2":
-      case "initialContactName":
-      case "pricingSupport":
-      case "initialCallAttendees":
-      case "otherKeyContacts":
-      case "responsiblePartners":
-        return `${field}.preferredFormattedName`;
+      case "closedDealFinalOutcome":
+        return `closedDeals.finalOutcome`;
+      case "closedDealCalculatedValue":
+        return `closedDeals.calculatedValue`;
+      case "closedDealSoftCloseDate":
+        return `closedDeals.softCloseDate`;
+      case "closedDealHardCloseDate":
+        return `closedDeals.hardCloseDate`;
       default:
         return field;
     }
@@ -1122,4 +1116,25 @@ export class CategoryService extends DbMicroServiceBase {
       case "closedDealFinalOutcome":
         return `closedDeals.finalOutcome`;
       case "closedDealCalculatedValue":
-        return `
+        return `closedDeals.calculatedValue`;
+      default:
+        return field;
+    }
+  }
+
+  private buildBreadCrumb(node, parentBreadCrumb = "") {
+    // Update the breadCrumb for the current node
+    node.breadCrumb = parentBreadCrumb
+      ? `${parentBreadCrumb} > ${node.name}`
+      : node.name;
+
+    // Recursively update breadCrumb for children
+    if (node.children) {
+      for (const child of node.children) {
+        this.buildBreadCrumb(child, node.breadCrumb);
+      }
+    }
+
+    return node;
+  }
+}
