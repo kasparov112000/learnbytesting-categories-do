@@ -591,106 +591,64 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   public getUpdatedCategory(existingCategory: Category, newCategory: Category): Category {
-    console.log('getUpdatedCategory - Input:', {
-      existingCategory: JSON.stringify(existingCategory),
-      newCategory: JSON.stringify(newCategory)
-    });
-
     const updatedCategory = new Category();
     
     // Preserve existing IDs and dates
     updatedCategory._id = existingCategory._id;
     updatedCategory.createdDate = existingCategory.createdDate;
-    updatedCategory.modifiedDate = new Date();
+    updatedCategory.createCreatedDate = existingCategory.createCreatedDate;
+    updatedCategory.createUuid = existingCategory.createUuid;
     
-    // Update with new values
+    // Update category properties
     updatedCategory.name = newCategory.name;
-    updatedCategory.createCreatedDate = newCategory.createCreatedDate;
-    updatedCategory.createUuid = newCategory.createUuid;
     updatedCategory.active = newCategory.active;
+    updatedCategory.modifiedDate = new Date();
     updatedCategory.children = [];
 
-    // Handle children
+    // Process children
     if (newCategory.children && newCategory.children.length > 0) {
-      console.log('getUpdatedCategory - Processing children:', {
-        newChildrenCount: newCategory.children.length,
-        existingChildrenCount: existingCategory.children?.length || 0
-      });
-
-      // Process each new child
       for (const newChild of newCategory.children) {
-        console.log('getUpdatedCategory - Processing new child:', {
-          childName: newChild.name,
-          childId: newChild._id,
-          childUuid: newChild.createUuid
-        });
-
-        // Find existing child by ID or createUuid
-        const existingChild = existingCategory.children?.find(child => 
-          child && (child._id === newChild._id || child.createUuid === newChild.createUuid)
-        );
-
-        console.log('getUpdatedCategory - Child search result:', {
-          childFound: !!existingChild,
-          existingChildId: existingChild?._id,
-          existingChildUuid: existingChild?.createUuid
-        });
-
         const updatedChild = new Category();
         
-        // Set basic properties
-        updatedChild.name = newChild.name;
-        updatedChild.createCreatedDate = newChild.createCreatedDate;
-        updatedChild.createUuid = newChild.createUuid;
-        updatedChild.active = newChild.active ?? true;
-        updatedChild.children = [];
+        // Set parent ID for the child
+        updatedChild.parent = updatedCategory._id;
+        
+        // Find existing child by UUID or create new
+        const existingChild = existingCategory.children?.find(
+          child => child.createUuid === newChild.createUuid
+        );
 
         if (existingChild) {
-          // Preserve existing child's ID and dates
+          // Preserve existing child's IDs and dates
           updatedChild._id = existingChild._id;
           updatedChild.createdDate = existingChild.createdDate;
-          updatedChild.parent = existingChild.parent;
+          updatedChild.createCreatedDate = existingChild.createCreatedDate;
+          updatedChild.createUuid = existingChild.createUuid;
         } else {
-          // Generate new ID and set parent for new child
+          // Generate new ID for new child
           updatedChild._id = newChild._id || crypto.randomUUID();
           updatedChild.createdDate = new Date();
-          updatedChild.parent = updatedCategory._id;
+          updatedChild.createCreatedDate = newChild.createCreatedDate;
+          updatedChild.createUuid = newChild.createUuid;
         }
-        updatedChild.modifiedDate = new Date();
 
-        // Process grandchildren if they exist
-        if (newChild.children && Array.isArray(newChild.children)) {
-          for (const grandChild of newChild.children) {
-            const updatedGrandChild = new Category();
-            Object.assign(updatedGrandChild, grandChild);
-            updatedGrandChild.parent = updatedChild._id;
-            updatedChild.children.push(updatedGrandChild);
-          }
+        // Update child properties
+        updatedChild.name = newChild.name;
+        updatedChild.active = newChild.active;
+        updatedChild.modifiedDate = new Date();
+        
+        // Process grandchildren recursively
+        if (newChild.children && newChild.children.length > 0) {
+          const existingChildWithChildren = existingChild || new Category();
+          updatedChild.children = this.getUpdatedCategory(existingChildWithChildren, newChild).children;
+        } else {
+          updatedChild.children = [];
         }
 
         updatedCategory.children.push(updatedChild);
       }
-    } else if (existingCategory.children) {
-      // If no new children provided but existing has children, preserve them
-      updatedCategory.children = existingCategory.children.map(child => {
-        const preservedChild = new Category();
-        Object.assign(preservedChild, child);
-        return preservedChild;
-      });
     }
 
-    console.log('getUpdatedCategory - Final result:', {
-      categoryId: updatedCategory._id,
-      categoryName: updatedCategory.name,
-      childrenCount: updatedCategory.children.length,
-      children: updatedCategory.children.map(c => ({
-        id: c._id,
-        name: c.name,
-        parent: c.parent,
-        childrenCount: c.children?.length || 0
-      }))
-    });
-    
     return updatedCategory;
   }
 
