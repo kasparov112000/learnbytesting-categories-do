@@ -5,7 +5,7 @@ import { DbPagedResults } from '../models';
 import { Request } from '@root/request';
 import { UnauthorizedException } from './errors/unauthorized-exception';
 import { ObjectId } from 'mongodb';
-import { Category } from '../models/category.model';
+import { CategoryModel } from '../models/category.model';
 
 export abstract class DbMicroServiceBase {
     protected dbService: DbServiceBase;
@@ -51,7 +51,7 @@ export abstract class DbMicroServiceBase {
 
         // Aggregate to filter parent documents and their nested items
         
-        let result = await Category.aggregate([
+        let result = await CategoryModel.aggregate([
           {
             $match: parentConditions
           },
@@ -67,83 +67,45 @@ export abstract class DbMicroServiceBase {
     }
 
 
-public async getSubCategory(categoryName, subCategoryName, res, isAdmin, getAllCategories) {
-    let parentConditions:any = {};
+public async getSubCategory(mainCategory: string | null, category: string | null, res: any, isAdmin: boolean, getAllCategories: boolean) {
     let result;
-    
-    // Only apply category filters if not admin and not getting all categories
-    if (!isAdmin && !getAllCategories) {
-        parentConditions = {
-            name: categoryName,
-            active: true
-        };
-
-        // Aggregate to match the parent category and filter the subcategory and its children
-        result = await Category.aggregate([
-            {
-                $match: parentConditions // Match the parent category
-            },
-            {
-                $project: {
-                    _id: 1,
-                    name: 1,
-                    children: {
-                        $filter: {
-                            input: "$children",
-                            as: "child",
-                            cond: {
-                                $and: [
-                                    { $eq: ["$$child.name", subCategoryName] },
-                                    { $eq: ["$$child.active", true] }
-                                ]
-                            }
-                        }
+    try {
+        if (isAdmin || getAllCategories) {
+            let result = await CategoryModel.aggregate([
+                {
+                    $match: {
+                        active: true
                     }
                 }
-            }
-        ]).exec();
-
-        // If no results found, return empty array with proper structure
-        if (!result || result.length === 0) {
-            return this.handlePagedResponse({ 
-                result: [{ _id: null, name: categoryName, children: [] }], 
-                count: 0 
-            }, res);
+            ]);
+            return this.handleResponse(result, res);
         }
 
-        // Ensure each result has a children array
-        result = result.map(item => ({
-            ...item,
-            children: item.children || []
-        }));
-    } else {
-        // For admin or getAllCategories, get all categories without filtering
-        result = await Category.aggregate([
-            {
-                $project: {
-                    _id: 1,
-                    name: 1,
-                    children: 1
+        if (!mainCategory || !category) {
+            result = await CategoryModel.aggregate([
+                {
+                    $match: {
+                        active: true,
+                        name: { $in: [mainCategory, category].filter(Boolean) }
+                    }
                 }
-            }
-        ]).exec();
-
-        // If no results found, return empty array with proper structure
-        if (!result || result.length === 0) {
-            return this.handlePagedResponse({ 
-                result: [{ _id: null, name: categoryName, children: [] }], 
-                count: 0 
-            }, res);
+            ]);
+        } else {
+            result = await CategoryModel.aggregate([
+                {
+                    $match: {
+                        active: true,
+                        name: mainCategory
+                    }
+                }
+            ]);
         }
 
-        // Ensure each result has a children array
-        result = result.map(item => ({
-            ...item,
-            children: item.children || []
-        }));
+        return this.handleResponse(result, res);
+    } catch (error) {
+        console.error('Error in getSubCategory:', error);
+        return this.handleResponse([], res);
     }
-
-    return this.handlePagedResponse({ result, count: result.length }, res);
 }
 
 public async getSubCategory2(mainCategory: string, categoryName: string, res, isAdmin: boolean, categoryId: string) {
@@ -229,7 +191,7 @@ public async getSubCategory2Data(mainCategory: string, categoryName: string, isA
     // --- End of Potentially Incorrect Logic ---
 
     console.log("getSubCategory2Data: Executing pipeline:", JSON.stringify(pipeline));
-    let result = await Category.aggregate(pipeline).allowDiskUse(true).exec();
+    let result = await CategoryModel.aggregate(pipeline).allowDiskUse(true).exec();
     console.log(`getSubCategory2Data: Pipeline executed. Found ${result.length} results initially.`);
 
     // Filter non-active children if necessary (only applies if !isAdmin)
@@ -255,7 +217,7 @@ public async getSubCategory2Data(mainCategory: string, categoryName: string, isA
             parentConditions = idArr ? { _id: { $in: idArr }, active: true } : {};
         }
     
-        let result = await Category.aggregate([
+        let result = await CategoryModel.aggregate([
             {
                 $match: parentConditions
             },

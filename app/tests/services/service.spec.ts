@@ -3,6 +3,13 @@ import { assert } from 'chai';
 import { CategoryService } from '../../services/category.service';
 import { Category } from 'hipolito-models';
 
+// Mock crypto.randomUUID
+const mockRandomUUID = jest.fn(() => '123e4567-e89b-12d3-a456-426614174000' as `${string}-${string}-${string}-${string}-${string}`);
+global.crypto = {
+  ...global.crypto,
+  randomUUID: mockRandomUUID
+};
+
 describe('Category Service', () => {
 
     let categoryService: CategoryService;
@@ -20,24 +27,22 @@ describe('Category Service', () => {
             lineOfService = Object.assign(new Category(), {
                 _id: '5d2f2f25e290765a7c63d56e',
                 name: "Old Line of Service",
-                createCreatedDate: new Date(1234567),
-                createdDate: new Date(1234599),
-                modifiedDate: new Date(12347777),
+                createCreatedDate: new Date('2020-01-01T00:00:00.000Z'),
+                createdDate: new Date('2020-01-01T00:00:00.000Z'),
+                modifiedDate: new Date('2020-01-01T00:00:00.000Z'),
                 createUuid: '325a7a4f-f655-47b6-8de8-5ab3e8f42067',
                 active: true,
                 children: [
                     Object.assign(new Category(), {
                         _id: '5d2f350d1f6a9b3184b82e56',
                         name: "Old Category",
-                        createCreatedDate: new Date(1234567),
-                        createdDate: new Date(1234599),
-                        modifiedDate: new Date(12347777),
+                        createCreatedDate: new Date('2020-01-01T00:00:00.000Z'),
+                        createdDate: new Date('2020-01-01T00:00:00.000Z'),
+                        modifiedDate: new Date('2020-01-01T00:00:00.000Z'),
                         createUuid: '5f2061e1-acd3-4167-b251-f8acd2528108',
                         active: true,
                         parent: '5d2f2f25e290765a7c63d56e',
-                        children: [
-
-                        ]
+                        children: []
                     })
                 ]
             });
@@ -91,18 +96,16 @@ describe('Category Service', () => {
             beforeEach(() => {
                 let newLineOfService = Object.assign(new Category(), {
                     name: "New Line of Service",
-                    createCreatedDate: new Date(1234568),
+                    createCreatedDate: new Date('2025-01-01T00:00:00.000Z'),
                     createUuid: '325a7a4f-f655-47b6-8de8-5ab3e8f42067',
                     active: false,
                     children: [
                         Object.assign(new Category(), {
                             name: "New Category",
-                            createCreatedDate: new Date(1234568),
+                            createCreatedDate: new Date('2025-01-01T00:00:00.000Z'),
                             createUuid: '5f2061e1-acd3-4167-b251-f8acd2528108',
                             active: false,
-                            children: [
-
-                            ]
+                            children: []
                         })
                     ]
                 });
@@ -119,11 +122,15 @@ describe('Category Service', () => {
             });
 
             it('Should change createCreatedDate', () => {
-                assert.notEqual(lineOfService.createCreatedDate, lineOfServiceResult.createCreatedDate);
+                const oldDate = new Date(lineOfService.createCreatedDate).getTime();
+                const newDate = new Date(lineOfServiceResult.createCreatedDate).getTime();
+                assert.notEqual(oldDate, newDate);
             });
 
             it('Should not change createdDate', () => {
-                assert.equal(lineOfService.createdDate, lineOfServiceResult.createdDate);
+                const oldDate = new Date(lineOfService.createdDate).getTime();
+                const newDate = new Date(lineOfServiceResult.createdDate).getTime();
+                assert.equal(oldDate, newDate);
             });
 
             it('Should not change createUuid', () => {
