@@ -10,6 +10,26 @@ import crypto from "crypto";
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 
+// Helper function for generating UUIDs to ensure consistent behavior
+function generateUuid() {
+  try {
+    // Try crypto.randomUUID() first (Node.js 14.17.0+)
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    } 
+    // Fall back to uuid package
+    return uuidv4();
+  } catch (error) {
+    // Ultimate fallback to a simple UUID generator for testing environments
+    const pattern = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+    return pattern.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+}
+
 // Define placeholder types (adjust if actual types are known)
 interface CategoryGridItem extends Category {
   breadcrumb?: string;
@@ -61,6 +81,8 @@ export class CategoryService extends DbMicroServiceBase {
     const start = parseInt(params?.startRow?.toString() || "", 10);
     let sort = this.getSortOrder(params);
     let inflightFilter = null;
+    
+    // Safely check if sortModel exists
     if (
       params?.sortModel &&
       params.sortModel[0] &&
@@ -68,17 +90,14 @@ export class CategoryService extends DbMicroServiceBase {
     ) {
       sort = { isInflight: params.sortModel[0].sort === "asc" ? 1 : -1 };
     }
+    
+    // Safely handle inflightStart
     if (params?.search?.inflightStart) {
       params.search.inflightStart = new Date();
-    } else {
-      // params.search.inflightStart = moment(params.search.inflightStart).toDate();
     }
-    // if (!params.search.inflightEnd) {
-    //     params.search.inflightEnd = new Date();
-    // } else {
-    //     params.search.inflightEnd = moment(params.search.inflightEnd).toDate();
-    // }
-    if (params.filterModel && has(params.filterModel, "isInflight.values")) {
+
+    // Safely check filterModel
+    if (params?.filterModel && has(params.filterModel, "isInflight.values")) {
       if (isEqual(params.filterModel.isInflight.values, ["true"])) {
         inflightFilter = { isInflight: true };
       } else {
@@ -86,52 +105,20 @@ export class CategoryService extends DbMicroServiceBase {
       }
       delete params.filterModel.isInflight;
     }
-    const query = this.getGridFilter(params, "permissions", true); //'user') //, 'txnId', false);
-    // const query = this.getGridFilter(params, txnId, false);
+    
+    // Safe getGridFilter call using null coalescence
+    const query = params ? this.getGridFilter(params, "permissions", true) : {};
 
     const aggregate: any = [
       {
         $match: query,
       },
-      // {
-      //     $addFields: {
-      //         isInflight: {
-      //             $cond: {
-      //                 if: {
-      //                     $or: [
-      //                         {
-      //                             $and: [
-      //                                 { $gt: ['$firstContactDate', null] },
-      //                                 { $gt: ['$hardCloseDate', null] },
-      //                                 { $lte: ['$firstContactDate', params.search.inflightEnd] },
-      //                                 { $gte: ['$hardCloseDate', params.search.inflightStart] },
-      //                             ],
-      //                         },
-      //                         {
-      //                             $and: [
-      //                                 { $lt: ['$hardCloseDate', new Date(0)] },
-      //                                 { $gt: ['$firstContactDate', null] },
-      //                                 { $lte: ['$firstContactDate', params.search.inflightEnd] },
-      //                             ],
-      //                         },
-      //                         {
-      //                             $and: [{ $lt: ['$firstContactDate', new Date(0)] }, { $lt: ['$hardCloseDate', new Date(0)] }],
-      //                         },
-      //                     ],
-      //                 },
-      //                 then: true,
-      //                 else: false,
-      //             },
-      //         },
-      //     },
-      // },
     ];
-    // if (inflightFilter) {
-    //     aggregate.push({ $match: inflightFilter });
-    // }
+    
     if (!isEmpty(sort)) {
       aggregate.push({ $sort: sort });
     }
+    
     aggregate.push(
       {
         $group: {
@@ -144,19 +131,15 @@ export class CategoryService extends DbMicroServiceBase {
         $project: {
           lastRow: 1,
           rows: {
-            $slice: ["$rows", start, params.endRow - params.startRow],
-            //  $slice: ['$rows', 0, 77772 - 1],
+            $slice: ["$rows", start, params?.endRow && params?.startRow ? params.endRow - params.startRow : 10],
           },
         },
       }
     );
 
-    let results = await this.dbService.grid(aggregate); // this.model.aggregate(aggregate).allowDiskUse(true).collation({ locale: 'en_US', numericOrdering: true });
+    let results = await this.dbService.grid(aggregate);
     const response = results[0] || { rows: [], lastRow: 0 };
-    // if(response.rows.length > 0){
-    //   const categories = await CategoriesHelper.getCategories();
-    //   response.rows = CategoriesHelper.mapCategories(response.rows, categories?.result);
-    // }
+    
     return res.status(200).json(response);
   }
 
@@ -323,10 +306,14 @@ export class CategoryService extends DbMicroServiceBase {
     });
   }
 
+  /**
+   * Helper method to get sort order with null safety
+   */
   private getSortOrder(
     params: GridServerSideRowRequest
   ): Record<string, number> {
-    const shouldSort = params.sortModel?.length > 0;
+    // Ensure params and sortModel exist before trying to access length
+    const shouldSort = params?.sortModel && params.sortModel.length > 0;
 
     if (!shouldSort) {
       return { addedDate: -1 };
@@ -477,7 +464,7 @@ export class CategoryService extends DbMicroServiceBase {
     const newCategory = new Category();
     
     // Set basic properties
-    newCategory._id = categoryData._id || crypto.randomUUID();
+    newCategory._id = categoryData._id || generateUuid();
     newCategory.name = categoryData.name;
     newCategory.active = categoryData.active ?? true;
     newCategory.createUuid = categoryData.createUuid;
@@ -598,6 +585,7 @@ export class CategoryService extends DbMicroServiceBase {
     updatedCategory.createdDate = existingCategory.createdDate;
     updatedCategory.createCreatedDate = existingCategory.createCreatedDate;
     updatedCategory.createUuid = existingCategory.createUuid;
+    updatedCategory.parent = existingCategory.parent; // Ensure parent ID is preserved
     
     // Update category properties
     updatedCategory.name = newCategory.name;
@@ -626,7 +614,7 @@ export class CategoryService extends DbMicroServiceBase {
           updatedChild.createUuid = existingChild.createUuid;
         } else {
           // Generate new ID for new child
-          updatedChild._id = newChild._id || crypto.randomUUID();
+          updatedChild._id = newChild._id || generateUuid();
           updatedChild.createdDate = new Date();
           updatedChild.createCreatedDate = newChild.createCreatedDate;
           updatedChild.createUuid = newChild.createUuid;
