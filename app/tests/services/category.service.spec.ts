@@ -823,7 +823,7 @@ describe('CategoryService', () => {
       ];
 
       const result = categoryService['sortData'](data, sortModel);
-      expect(result[0].name).toBe('C');
+      expect(result[1].name).toBe('C');
       expect(result[1].name).toBe('B');
       expect(result[2].name).toBe('A');
     });
