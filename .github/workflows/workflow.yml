@@ -24,6 +24,9 @@ jobs:
           node-version: '16'
           cache: 'npm'
 
+      - name: Update package lock
+        run: npm install --package-lock-only
+
       - name: Install dependencies
         run: npm ci
 
@@ -34,7 +37,7 @@ jobs:
         run: npm run test:coverage
         
       - name: Archive test results
-        uses: actions/upload-artifact@v4  # Upgraded from v2 to v4 to fix the download info error
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: output/coverage/jest
@@ -57,7 +60,7 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v2  # Updated from v1 to v2
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -69,7 +72,7 @@ jobs:
       # Fixed the build-push-action step
       - name: Build and push
         id: docker_build
-        uses: docker/build-push-action@v4  # Updated from v2 to v4
+        uses: docker/build-push-action@v4
         with:
           context: .  # Use local context instead of Git URL
           push: true
@@ -131,7 +134,7 @@ jobs:
       
       # Actual deployment with increased timeout
       - name: Deploy
-        uses: WyriHaximus/github-action-helm3@v3  # Updated from v2 to v3
+        uses: WyriHaximus/github-action-helm3@v3
         with:
           exec: helm upgrade categories ./helm/ --install --wait --atomic --timeout 15m --set=app.name=categories --values=./helm/values.yaml --debug
           kubeconfig: '${{ secrets.KUBECONFIG }}'
