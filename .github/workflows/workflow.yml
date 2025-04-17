@@ -24,17 +24,17 @@ jobs:
           node-version: '16'
           cache: 'npm'
 
-      - name: Update package lock
-        run: npm install --package-lock-only
+      - name: Install dependencies with DevDependencies
+        run: npm install
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install Jest and ts-jest explicitly
+        run: npm install --save-dev jest ts-jest @types/jest
 
       - name: Run unit tests
-        run: npx jest
+        run: npx jest --config=jest.config.js
 
       - name: Generate test coverage report
-        run: npx jest --coverage --coverageDirectory=output/coverage/jest
+        run: npx jest --config=jest.config.js --coverage --coverageDirectory=output/coverage/jest
         
       - name: Archive test results
         uses: actions/upload-artifact@v4
