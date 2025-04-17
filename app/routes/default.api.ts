@@ -71,7 +71,56 @@ export default function (app, express, serviceobject) {
   });
 
   router.delete(`${baseUrl}/:id`, (req, res) => {
-    serviceobject.delete(req, res);
+    console.log("info", `DELETE Category request received - ID: ${req.params.id}`, {
+      timestamp: Date.now(),
+      txnId: req.id,
+      categoryId: req.params.id,
+      requestHeaders: req.headers,
+      requestQuery: req.query
+    });
+    
+    try {
+      console.log("debug", `Attempting to delete category with ID: ${req.params.id}`);
+      
+      // Call the service method with a callback to log the outcome
+      const originalDelete = serviceobject.delete;
+      serviceobject.delete = function(request, response) {
+        console.log("debug", "Inside delete method - before service call");
+        
+        // Wrap the response object to intercept the result
+        const originalJson = response.json;
+        const originalStatus = response.status;
+        
+        response.json = function(data) {
+          console.log("info", `Delete operation result:`, {
+            result: data,
+            success: data && (data.success || data.deletedCount > 0)
+          });
+          return originalJson.call(this, data);
+        };
+        
+        response.status = function(code) {
+          console.log("info", `Delete operation status code: ${code}`);
+          return originalStatus.call(this, code);
+        };
+        
+        // Call the original delete method
+        return originalDelete.call(this, request, response);
+      };
+      
+      serviceobject.delete(req, res);
+      
+      // Restore the original method
+      serviceobject.delete = originalDelete;
+    } catch (error) {
+      console.error("error", `Error in delete category endpoint: ${error.message}`, {
+        error: error.stack,
+        categoryId: req.params.id
+      });
+      
+      // Let the original error handling take over
+      serviceobject.delete(req, res);
+    }
   });
 
   return router;

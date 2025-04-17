@@ -1159,4 +1159,161 @@ export class CategoryService extends DbMicroServiceBase {
 
     return orderBy(data, sortKeys, sortOrders);
   }
+
+  /**
+   * Deletes a category from the deeply nested structure by finding its parent and removing it from the hierarchy
+   */
+  public async delete(req, res) {
+    console.log("==== START CATEGORY DELETE OPERATION ====");
+    console.log("Delete request params:", {
+      params: req.params,
+      query: req.query,
+      id: req.params.id,
+      hasIdParam: !!req.params.id
+    });
+
+    try {
+      // Get the category ID from the request
+      const categoryId = req.params.id;
+      if (!categoryId) {
+        console.error("Error: No category ID provided in delete request");
+        return res.status(400).json({ 
+          success: false, 
+          message: "No category ID provided" 
+        });
+      }
+
+      console.log(`Attempting to delete category with ID: ${categoryId}`);
+
+      // First get all root categories
+      const allRootCategories = await this.dbService.findAll();
+      console.log(`Found ${allRootCategories.length} root categories`);
+
+      // Helper function to recursively find a category and its parent in the nested structure
+      const findCategoryAndParent = (categories, targetId, parent = null, path = []) => {
+        for (let i = 0; i < categories.length; i++) {
+          const category = categories[i];
+          const currentPath = [...path, i];
+          
+          // Check if this is the category we're looking for
+          if (category._id && category._id.toString() === targetId.toString()) {
+            return { 
+              category, 
+              parent, 
+              index: i,
+              path: currentPath
+            };
+          }
+          
+          // Recursively search in children if they exist
+          if (category.children && category.children.length > 0) {
+            const result = findCategoryAndParent(
+              category.children, 
+              targetId, 
+              category,
+              [...currentPath, 'children']
+            );
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+
+      // Find the category and its parent
+      let foundInfo = null;
+      
+      // First, check if it's a root category
+      for (let i = 0; i < allRootCategories.length; i++) {
+        if (allRootCategories[i]._id && 
+            allRootCategories[i]._id.toString() === categoryId.toString()) {
+          foundInfo = {
+            category: allRootCategories[i],
+            parent: null,
+            index: i,
+            path: [i],
+            isRoot: true
+          };
+          break;
+        }
+      }
+      
+      // If not a root category, search the entire tree
+      if (!foundInfo) {
+        for (const rootCategory of allRootCategories) {
+          if (rootCategory.children && rootCategory.children.length > 0) {
+            foundInfo = findCategoryAndParent(rootCategory.children, categoryId, rootCategory);
+            if (foundInfo) {
+              // Add the root category info
+              foundInfo.rootCategory = rootCategory;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!foundInfo) {
+        console.error(`Category with ID ${categoryId} not found in the nested structure`);
+        return res.status(404).json({
+          success: false,
+          message: `Category with ID ${categoryId} not found`
+        });
+      }
+
+      console.log("Found category to delete:", {
+        id: foundInfo.category._id,
+        name: foundInfo.category.name,
+        hasChildren: foundInfo.category.children && foundInfo.category.children.length > 0,
+        childrenCount: foundInfo.category.children?.length || 0,
+        isRoot: foundInfo.isRoot,
+        parentName: foundInfo.parent?.name,
+        path: foundInfo.path.join(' > ')
+      });
+
+      let result;
+      
+      // Handle deletion based on whether it's a root category or a child category
+      if (foundInfo.isRoot) {
+        // It's a root category, we can delete it directly
+        console.log(`Deleting root category: ${foundInfo.category.name}`);
+        result = await this.dbService.delete({
+          params: { id: categoryId }
+        });
+        console.log("Root category deletion result:", result);
+      } else {
+        // It's a nested category, we need to remove it from its parent's children array
+        console.log(`Removing category from parent: ${foundInfo.parent.name}`);
+        
+        // Remove the category from its parent's children array
+        foundInfo.parent.children.splice(foundInfo.index, 1);
+        
+        // Update the parent document
+        const rootToUpdate = foundInfo.rootCategory || foundInfo.parent;
+        console.log(`Updating root document: ${rootToUpdate.name} (${rootToUpdate._id})`);
+        
+        result = await this.dbService.update({
+          params: { id: rootToUpdate._id },
+          body: rootToUpdate
+        });
+        
+        console.log("Parent update result:", result);
+      }
+
+      console.log("==== END CATEGORY DELETE OPERATION ====");
+      return res.status(200).json({
+        success: true,
+        message: `Category ${foundInfo.category.name} successfully deleted`,
+        deletedCategory: foundInfo.category,
+        result: result
+      });
+
+    } catch (error) {
+      console.error("Error in category delete operation:", error);
+      console.log("==== END CATEGORY DELETE OPERATION WITH ERROR ====");
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while deleting the category",
+        error: error.message
+      });
+    }
+  }
 }
