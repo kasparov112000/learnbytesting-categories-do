@@ -34,7 +34,7 @@ jobs:
         run: npm run test:coverage
         
       - name: Archive test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2  # Downgrade from v3 to v2 to avoid the download info error
         with:
           name: test-results
           path: output/coverage/jest
