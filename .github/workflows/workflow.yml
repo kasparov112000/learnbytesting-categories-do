@@ -27,8 +27,8 @@ jobs:
       - name: Install dependencies with DevDependencies
         run: npm install
 
-      - name: Install Jest and ts-jest explicitly
-        run: npm install --save-dev jest ts-jest @types/jest
+      - name: Install Jest, ts-jest and Jest reporters explicitly
+        run: npm install --save-dev jest ts-jest @types/jest jest-junit
 
       - name: Run unit tests
         run: npx jest --config=jest.config.js
