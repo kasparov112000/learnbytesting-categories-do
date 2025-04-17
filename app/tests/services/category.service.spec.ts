@@ -828,4 +828,197 @@ describe('CategoryService', () => {
       expect(result[2].name).toBe('A');
     });
   });
+
+  describe('delete', () => {
+    beforeEach(() => {
+      // Mock the structure of categories with nested children
+      const mockCategoryData = [
+        {
+          _id: 'root1',
+          name: 'Root Category 1',
+          children: [
+            {
+              _id: 'child1',
+              name: 'Child Category 1',
+              children: [
+                {
+                  _id: 'grandchild1',
+                  name: 'Grandchild Category 1',
+                  children: []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          _id: 'root2',
+          name: 'Root Category 2',
+          children: []
+        }
+      ];
+      
+      // Use databaseService.findAll directly instead of mocking collection.findAll
+      databaseService.findAll = jest.fn().mockResolvedValue(mockCategoryData);
+      
+      databaseService.delete = jest.fn().mockResolvedValue({ 
+        deletedCount: 1 
+      });
+      
+      databaseService.update = jest.fn().mockResolvedValue({ 
+        modifiedCount: 1 
+      });
+    });
+
+    it('should delete a root category successfully', async () => {
+      // Setup request with a root category ID
+      const req = {
+        params: { id: 'root2' },
+        query: {}
+      };
+      
+      await categoryService.delete(req, mockRes);
+      
+      // Verify findAll was called to get all categories
+      expect(databaseService.findAll).toHaveBeenCalled();
+      
+      // Verify delete was called with the correct ID
+      expect(databaseService.delete).toHaveBeenCalledWith({
+        params: { id: 'root2' }
+      });
+      
+      // Verify response
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: expect.stringContaining('Root Category 2')
+        })
+      );
+    });
+
+    it('should delete a nested child category successfully', async () => {
+      // Setup request with a child category ID
+      const req = {
+        params: { id: 'child1' },
+        query: {}
+      };
+      
+      await categoryService.delete(req, mockRes);
+      
+      // Verify findAll was called to get all categories
+      expect(databaseService.findAll).toHaveBeenCalled();
+      
+      // For a nested child, we should update the parent, not directly delete
+      expect(databaseService.update).toHaveBeenCalled();
+      expect(databaseService.update.mock.calls[0][0].body.children).toHaveLength(0);
+      
+      // Verify response
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: expect.stringContaining('Child Category 1')
+        })
+      );
+    });
+
+    it('should delete a deeply nested grandchild category successfully', async () => {
+      // Setup request with a grandchild category ID
+      const req = {
+        params: { id: 'grandchild1' },
+        query: {}
+      };
+      
+      await categoryService.delete(req, mockRes);
+      
+      // Verify findAll was called to get all categories
+      expect(databaseService.findAll).toHaveBeenCalled();
+      
+      // For a nested grandchild, we should update the parent, not directly delete
+      expect(databaseService.update).toHaveBeenCalled();
+      
+      // Verify response
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          message: expect.stringContaining('Grandchild Category 1')
+        })
+      );
+    });
+
+    it('should return 404 when category is not found', async () => {
+      // Setup request with a non-existent category ID
+      const req = {
+        params: { id: 'nonexistent' },
+        query: {}
+      };
+      
+      await categoryService.delete(req, mockRes);
+      
+      // Verify findAll was called to get all categories
+      expect(databaseService.findAll).toHaveBeenCalled();
+      
+      // Verify delete was not called
+      expect(databaseService.delete).not.toHaveBeenCalled();
+      expect(databaseService.update).not.toHaveBeenCalled();
+      
+      // Verify response
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: expect.stringContaining('not found')
+        })
+      );
+    });
+
+    it('should return 400 when no category ID is provided', async () => {
+      // Setup request with no category ID
+      const req = {
+        params: {},
+        query: {}
+      };
+      
+      await categoryService.delete(req, mockRes);
+      
+      // Verify findAll was not called
+      expect(databaseService.findAll).not.toHaveBeenCalled();
+      
+      // Verify delete was not called
+      expect(databaseService.delete).not.toHaveBeenCalled();
+      
+      // Verify response
+      expect(mockRes.status).toHaveBeenCalledWith(400);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: expect.stringContaining('No category ID provided')
+        })
+      );
+    });
+
+    it('should handle errors during the delete operation', async () => {
+      // Mock findAll to throw an error
+      databaseService.findAll = jest.fn().mockRejectedValue(
+        new Error('Database connection failed')
+      );
+      
+      const req = {
+        params: { id: 'root1' },
+        query: {}
+      };
+      
+      await categoryService.delete(req, mockRes);
+      
+      // Verify response
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: expect.stringContaining('error occurred')
+        })
+      );
+    });
+  });
 });
