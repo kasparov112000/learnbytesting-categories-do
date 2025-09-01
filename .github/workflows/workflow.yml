@@ -21,7 +21,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '16'
+          node-version: '18'
           cache: 'npm'
 
       - name: Install dependencies with DevDependencies
@@ -76,7 +76,9 @@ jobs:
         with:
           context: .  # Use local context instead of Git URL
           push: true
-          tags: kasparov112000/learnbytesting-categories-do:latest
+          tags: |
+            kasparov112000/learnbytesting-categories-do:latest
+            kasparov112000/learnbytesting-categories-do:${{ github.sha }}
           # Pass GitHub token as a secret but using proper format
           secrets: |
             "GIT_AUTH_TOKEN=${{ secrets.MYTOKEN }}"
@@ -132,12 +134,19 @@ jobs:
           echo "=== Dry run of helm upgrade ==="
           helm upgrade --dry-run categories ./helm/ --install --set=app.name=categories --values=./helm/values.yaml
       
+      # Install Helm
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+      
       # Actual deployment with increased timeout
       - name: Deploy
-        uses: WyriHaximus/github-action-helm3@v3
-        with:
-          exec: helm upgrade categories ./helm/ --install --wait --atomic --timeout 15m --set=app.name=categories --values=./helm/values.yaml --debug
-          kubeconfig: '${{ secrets.KUBECONFIG }}'
+        run: |
+          helm upgrade categories ./helm/ --install --wait --atomic --timeout 15m \
+            --set=app.name=categories \
+            --set=image.tag=${{ github.sha }} \
+            --values=./helm/values.yaml --debug
       
       # Restart the deployment to ensure all pods are using the new image
       - name: Restart Deployment
