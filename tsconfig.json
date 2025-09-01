@@ -10,6 +10,7 @@
         "pretty": true,
         "sourceMap": true,
         "lib": ["es2015", "es2016", "es2017", "dom"],
+        "skipLibCheck": true
     },
     "include": ["app/**/*", "../services/files/app/providers", "../services/files/config/azure-storage.config.ts"],
     "exclude": ["node_modules", "test"]
