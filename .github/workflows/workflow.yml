@@ -84,7 +84,9 @@ jobs:
             "GIT_AUTH_TOKEN=${{ secrets.MYTOKEN }}"
 
       - name: Save DigitalOcean kubeconfig with short-lived credentials
-        run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
+        run: |
+          doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
+          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
 
       # Diagnostic logging before Helm deployment
       - name: Pre-deployment diagnostics
@@ -147,14 +149,6 @@ jobs:
             --set=app.name=categories \
             --set=image.tag=${{ github.sha }} \
             --values=./helm/values.yaml --debug
-      
-      # Restart the deployment to ensure all pods are using the new image
-      - name: Restart Deployment
-        run: |
-          echo "=== Restarting deployment ==="
-          kubectl rollout restart deployment/categories
-          echo "=== Waiting for rollout to complete ==="
-          kubectl rollout status deployment/categories --timeout=5m
       
       # Diagnostic logging after Helm attempt
       - name: Post-deployment diagnostics
