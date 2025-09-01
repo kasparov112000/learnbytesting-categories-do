@@ -677,7 +677,7 @@ export class CategoryService extends DbMicroServiceBase {
 
     const isAdmin = currentUser?.roles?.filter(
         (role) => role?.name === "System Administrator"
-    ).length > 0 || currentUser['https://learnbytesting_ai/roles']?.includes("Admin");
+    ).length > 0 || currentUser?.['https://learnbytesting_ai/roles']?.includes("Admin");
 
     console.log("Debug - User Info:", {
         userInfo,
@@ -719,7 +719,12 @@ export class CategoryService extends DbMicroServiceBase {
       categoryLength: userInfo?.category?.length
     });
 
-    const isAdmin = true;
+    // Check if user is admin based on roles
+    const isAdmin = userInfo?.roles?.some(role => role?.name === "System Administrator") || 
+                   userInfo?.['https://learnbytesting_ai/roles']?.includes("Admin") || 
+                   userInfo?.['https://learnbytesting.ai/roles']?.includes("Admin") || 
+                   false;
+    
     if (isAdmin) {
       console.log('filterByCategory2 - Getting all categories for admin');
       let result = await super.getSubCategory2Data('', '', isAdmin, '');
