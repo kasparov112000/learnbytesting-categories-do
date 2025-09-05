@@ -60,6 +60,22 @@ export class CategoryService extends DbMicroServiceBase {
     super(dbService);
   }
 
+  public async getAll(req, res) {
+    try {
+      const results = await this.dbService.findAll();
+      return res.status(200).json({
+        result: results,
+        count: results.length
+      });
+    } catch (error) {
+      console.error("Error getting all categories:", error);
+      return res.status(500).json({ 
+        error: "Failed to retrieve categories",
+        message: error.message 
+      });
+    }
+  }
+
   public async getByLineOfService(req, res) {
     return await this.filterLinesOfService(req, res);
   }

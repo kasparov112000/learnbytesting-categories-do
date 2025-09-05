@@ -14,6 +14,10 @@ export default function (app, express, serviceobject) {
     res.status(200).json({ message: "pong from categories" });
   });
 
+  router.get(baseUrl, (req, res) => {
+    serviceobject.getAll(req, res);
+  });
+
   router.post(`${baseUrl}/grid`, (req, res) => {
     serviceobject.grid({ ...req.body.session.body }, res);
   });
