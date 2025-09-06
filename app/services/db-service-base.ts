@@ -82,12 +82,37 @@ export abstract class DbServiceBase {
     }
 
     public async create(model): Promise<any> {
+        console.log("=== DB-SERVICE-BASE CREATE ===");
+        console.log("Model received:", JSON.stringify(model, null, 2));
+        
         if (!model) {
+            console.error("ERROR: No payload was provided to create");
             throw new Error('No payload was provided to create.');
         }
 
         this.debugInfo('Create', model);
-        return await this.dbModel.create(model);
+        
+        try {
+            console.log("Attempting to create document in database...");
+            console.log("Database model name:", this.dbModel.modelName);
+            console.log("Collection name:", this.dbModel.collection.name);
+            
+            const result = await this.dbModel.create(model);
+            
+            console.log("Document created successfully!");
+            console.log("Created document:", JSON.stringify(result, null, 2));
+            console.log("=== END DB-SERVICE-BASE CREATE ===");
+            
+            return result;
+        } catch (error) {
+            console.error("=== DB-SERVICE-BASE CREATE ERROR ===");
+            console.error("Failed to create document in database");
+            console.error("Error:", error);
+            console.error("Error name:", error.name);
+            console.error("Error message:", error.message);
+            console.error("=== END DB-SERVICE-BASE CREATE ERROR ===");
+            throw error;
+        }
     }
 
     public async update<TResult = any>(updateRequest): Promise<TResult> {

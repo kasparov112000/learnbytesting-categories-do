@@ -282,11 +282,27 @@ public async getSubCategory2Data(mainCategory: string, categoryName: string, isA
     }
 
     public async post(req, res) {
+        console.log("=== DB-MICRO-SERVICE-BASE POST ===");
+        console.log("Request body before onPrePost:", JSON.stringify(req.body, null, 2));
+        
         try {
             this.onPrePost(req.body);
+            console.log("Request body after onPrePost:", JSON.stringify(req.body, null, 2));
+            
+            console.log("Calling dbService.create...");
             const result = await this.dbService.create(req.body);
-            return this.handleResponse(result, res);
+            console.log("dbService.create result:", JSON.stringify(result, null, 2));
+            
+            console.log("Calling handleResponse...");
+            const response = this.handleResponse(result, res);
+            console.log("=== END DB-MICRO-SERVICE-BASE POST ===");
+            return response;
         } catch (error) {
+            console.error("=== DB-MICRO-SERVICE-BASE POST ERROR ===");
+            console.error("Error in post method:", error);
+            console.error("Error name:", error.name);
+            console.error("Error message:", error.message);
+            console.error("Error stack:", error.stack);
             return this.handleErrorResponse(error, res);
         }
     }

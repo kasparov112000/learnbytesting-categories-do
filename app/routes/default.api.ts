@@ -5,6 +5,9 @@ export default function (app, express, serviceobject) {
   const dbService = new DbService();
   const status = require("http-status");
   const baseUrl = "/categories";
+  
+  console.log("Categories routes loaded, serviceobject type:", typeof serviceobject);
+  console.log("serviceobject methods:", serviceobject ? Object.getOwnPropertyNames(Object.getPrototypeOf(serviceobject)) : "No serviceobject");
 
   router.get("/pingcategories", (req, res) => {
     console.log("info", "GET Ping Categories", {
@@ -54,20 +57,36 @@ export default function (app, express, serviceobject) {
     dbService.close();
   });
 
-  router.post(`${baseUrl}/:id`, (req, res) => {
-    serviceobject.getByLineOfService(req, res);
-  });
-
-  router.post(baseUrl, (req, res) => {
-    serviceobject.getByCategory(req, res);
-  });
-
+  // More specific routes should come first
   router.post(`${baseUrl}/getByCategory`, (req, res) => {
     serviceobject.getByCategory(req, res);
   });
 
   router.post(`${baseUrl}/sync/create`, (req, res) => {
     serviceobject.syncCreateCategories(req, res);
+  });
+
+  router.post(`${baseUrl}/create`, (req, res) => {
+    console.log("ROUTE HIT: POST /categories/create");
+    console.log("========== CATEGORY CREATE ROUTE ==========");
+    console.log("Route hit: POST /categories/create");
+    console.log("Timestamp:", new Date().toISOString());
+    console.log("Content-Type:", req.headers['content-type']);
+    console.log("Request Body Size:", JSON.stringify(req.body).length, "bytes");
+    console.log("Has req.body:", !!req.body);
+    console.log("Body type:", typeof req.body);
+    console.log("Body keys:", req.body ? Object.keys(req.body) : "No body");
+    console.log("Calling serviceobject.createCategory...");
+    serviceobject.createCategory(req, res);
+  });
+
+  // Less specific routes should come after
+  router.post(`${baseUrl}/:id`, (req, res) => {
+    serviceobject.getByLineOfService(req, res);
+  });
+
+  router.post(baseUrl, (req, res) => {
+    serviceobject.getByCategory(req, res);
   });
 
   router.put(`${baseUrl}/:id`, (req, res) => {

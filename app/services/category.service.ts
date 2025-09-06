@@ -81,9 +81,49 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   public async getByCategory(req, res) {
+    console.log("WARNING: getByCategory called - this might be catching /create requests!");
+    console.log("Request URL:", req.url);
+    console.log("Request path:", req.path);
+    console.log("Request originalUrl:", req.originalUrl);
     let resp;
     resp = await this.filterByCategory(req, res);
     return resp;
+  }
+
+  public async createCategory(req, res) {
+    console.log("========== CATEGORY CREATE REQUEST ==========");
+    console.log("Timestamp:", new Date().toISOString());
+    console.log("Request Headers:", JSON.stringify(req.headers, null, 2));
+    console.log("Request Body:", JSON.stringify(req.body, null, 2));
+    console.log("Request Params:", JSON.stringify(req.params, null, 2));
+    console.log("Request Query:", JSON.stringify(req.query, null, 2));
+    
+    try {
+      // Log before calling base post method
+      console.log("Calling base class post method...");
+      
+      // Use the base class post method which handles creation
+      const result = await this.post(req, res);
+      
+      console.log("Post method completed");
+      console.log("Result:", result);
+      console.log("========== END CATEGORY CREATE ==========");
+      
+      return result;
+    } catch (error) {
+      console.error("========== CATEGORY CREATE ERROR ==========");
+      console.error("Error Type:", error.name);
+      console.error("Error Message:", error.message);
+      console.error("Error Stack:", error.stack);
+      console.error("Full Error Object:", error);
+      console.error("========== END CATEGORY CREATE ERROR ==========");
+      
+      return res.status(500).json({ 
+        error: "Failed to create category",
+        message: error.message,
+        details: error.toString()
+      });
+    }
   }
 
 
