@@ -120,8 +120,17 @@ export abstract class DbServiceBase {
             throw new Error('Invalid data provided for update. Check the payload and that an id was passed to the service correctly.');
         }
 
+        // Convert string ID to ObjectId if necessary
+        let queryId;
+        try {
+            queryId = new ObjectID(updateRequest.params.id);
+        } catch (e) {
+            // If it's not a valid ObjectID format, use it as is (might be a custom ID)
+            queryId = updateRequest.params.id;
+        }
+
         const result = await this.dbModel.findOneAndUpdate(
-            { _id: updateRequest.params.id },
+            { _id: queryId },
             updateRequest.body,
             { new: true, runValidators: true }
         );
@@ -130,6 +139,7 @@ export abstract class DbServiceBase {
             console.log('update result', result);
             console.log('updateRequest from update method', updateRequest);
             console.log('updateRequest body', updateRequest.body);
+            console.log('queryId used:', queryId);
         }
 
         if (!result) {
@@ -140,7 +150,16 @@ export abstract class DbServiceBase {
     }
 
     public async delete<TResult = any>(deleteRequest): Promise<TResult> {
-        return await this.dbModel.remove({ _id: deleteRequest.params.id });
+        // Convert string ID to ObjectId if necessary
+        let queryId;
+        try {
+            queryId = new ObjectID(deleteRequest.params.id);
+        } catch (e) {
+            // If it's not a valid ObjectID format, use it as is (might be a custom ID)
+            queryId = deleteRequest.params.id;
+        }
+        
+        return await this.dbModel.remove({ _id: queryId });
     }
 
     protected async handlePagedResult<TResult>(query: Query<TResult, any>): Promise<DbPagedResults<TResult>> {
