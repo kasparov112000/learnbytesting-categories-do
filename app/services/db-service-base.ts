@@ -1,5 +1,5 @@
 import { ObjectID } from 'mongodb';
-import { Query, Error } from 'mongoose';
+import { Query, Error, Types } from 'mongoose';
 import { DbQuery, DbPagedResults } from '../models';
 import { ConnectionConfig } from './configuration/connection-config';
 import { MongooseQueryParser } from 'mongoose-query-parser';
@@ -123,7 +123,10 @@ export abstract class DbServiceBase {
         // Convert string ID to ObjectId if necessary
         let queryId;
         try {
-            queryId = new ObjectID(updateRequest.params.id);
+            // Use mongoose.Types.ObjectId for proper mongoose integration
+            queryId = Types.ObjectId.isValid(updateRequest.params.id) ? 
+                     new Types.ObjectId(updateRequest.params.id) : 
+                     updateRequest.params.id;
         } catch (e) {
             // If it's not a valid ObjectID format, use it as is (might be a custom ID)
             queryId = updateRequest.params.id;
@@ -140,6 +143,8 @@ export abstract class DbServiceBase {
             console.log('updateRequest from update method', updateRequest);
             console.log('updateRequest body', updateRequest.body);
             console.log('queryId used:', queryId);
+            console.log('queryId type:', typeof queryId);
+            console.log('queryId is ObjectId:', queryId instanceof Types.ObjectId);
         }
 
         if (!result) {
@@ -153,7 +158,10 @@ export abstract class DbServiceBase {
         // Convert string ID to ObjectId if necessary
         let queryId;
         try {
-            queryId = new ObjectID(deleteRequest.params.id);
+            // Use mongoose.Types.ObjectId for proper mongoose integration
+            queryId = Types.ObjectId.isValid(deleteRequest.params.id) ? 
+                     new Types.ObjectId(deleteRequest.params.id) : 
+                     deleteRequest.params.id;
         } catch (e) {
             // If it's not a valid ObjectID format, use it as is (might be a custom ID)
             queryId = deleteRequest.params.id;
