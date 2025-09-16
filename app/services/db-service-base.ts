@@ -120,17 +120,8 @@ export abstract class DbServiceBase {
             throw new Error('Invalid data provided for update. Check the payload and that an id was passed to the service correctly.');
         }
 
-        // Convert string ID to ObjectId if necessary
-        let queryId;
-        try {
-            // Use mongoose.Types.ObjectId for proper mongoose integration
-            queryId = Types.ObjectId.isValid(updateRequest.params.id) ? 
-                     new Types.ObjectId(updateRequest.params.id) : 
-                     updateRequest.params.id;
-        } catch (e) {
-            // If it's not a valid ObjectID format, use it as is (might be a custom ID)
-            queryId = updateRequest.params.id;
-        }
+        // Use the ID directly as the schema defines _id as String type
+        const queryId = updateRequest.params.id;
 
         const result = await this.dbModel.findOneAndUpdate(
             { _id: queryId },
@@ -144,7 +135,6 @@ export abstract class DbServiceBase {
             console.log('updateRequest body', updateRequest.body);
             console.log('queryId used:', queryId);
             console.log('queryId type:', typeof queryId);
-            console.log('queryId is ObjectId:', queryId instanceof Types.ObjectId);
         }
 
         if (!result) {
@@ -155,17 +145,8 @@ export abstract class DbServiceBase {
     }
 
     public async delete<TResult = any>(deleteRequest): Promise<TResult> {
-        // Convert string ID to ObjectId if necessary
-        let queryId;
-        try {
-            // Use mongoose.Types.ObjectId for proper mongoose integration
-            queryId = Types.ObjectId.isValid(deleteRequest.params.id) ? 
-                     new Types.ObjectId(deleteRequest.params.id) : 
-                     deleteRequest.params.id;
-        } catch (e) {
-            // If it's not a valid ObjectID format, use it as is (might be a custom ID)
-            queryId = deleteRequest.params.id;
-        }
+        // Use the ID directly as the schema defines _id as String type
+        const queryId = deleteRequest.params.id;
         
         return await this.dbModel.remove({ _id: queryId });
     }
