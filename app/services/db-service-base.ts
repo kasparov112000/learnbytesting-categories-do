@@ -122,6 +122,22 @@ export abstract class DbServiceBase {
         // Use the ID directly as the schema defines _id as String type
         const queryId = updateRequest.params.id;
 
+        // Debug: First check if document exists
+        console.log('DEBUG: Looking for document with _id:', queryId);
+        const existingDoc = await this.dbModel.findOne({ _id: queryId });
+        console.log('DEBUG: Found existing document?', !!existingDoc);
+        if (existingDoc) {
+            console.log('DEBUG: Existing doc _id:', existingDoc._id);
+            console.log('DEBUG: Existing doc _id type:', typeof existingDoc._id);
+        }
+
+        // Debug: Also check all documents to see what IDs exist
+        const allDocs = await this.dbModel.find({}).select('_id name').limit(10);
+        console.log('DEBUG: Sample documents in collection:');
+        allDocs.forEach(doc => {
+            console.log(`  _id: ${doc._id} (type: ${typeof doc._id}), name: ${doc.name}`);
+        });
+
         const result = await this.dbModel.findOneAndUpdate(
             { _id: queryId },
             updateRequest.body,
