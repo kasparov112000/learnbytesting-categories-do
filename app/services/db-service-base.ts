@@ -1,4 +1,3 @@
-import { ObjectID } from 'mongodb';
 import { Query, Error, Types } from 'mongoose';
 import { DbQuery, DbPagedResults } from '../models';
 import { ConnectionConfig } from './configuration/connection-config';
