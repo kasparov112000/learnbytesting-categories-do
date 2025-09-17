@@ -119,6 +119,23 @@ export abstract class DbServiceBase {
             throw new Error('Invalid data provided for update. Check the payload and that an id was passed to the service correctly.');
         }
 
+        // Debug: Try to find the document first
+        const id = updateRequest.params.id;
+        console.log('DEBUG: Attempting to update document with id:', id);
+        
+        // Try multiple approaches to find the document
+        const findById = await this.dbModel.findById(id).exec();
+        console.log('DEBUG: findById result:', !!findById);
+        
+        const findOne = await this.dbModel.findOne({ _id: id }).exec();
+        console.log('DEBUG: findOne with string _id result:', !!findOne);
+        
+        // If it's a valid ObjectId format, try with ObjectId
+        if (/^[0-9a-fA-F]{24}$/.test(id)) {
+            const findWithObjectId = await this.dbModel.findOne({ _id: new Types.ObjectId(id) }).exec();
+            console.log('DEBUG: findOne with ObjectId result:', !!findWithObjectId);
+        }
+
         // Use findByIdAndUpdate which handles both String and ObjectId types automatically
         const result = await this.dbModel.findByIdAndUpdate(
             updateRequest.params.id,

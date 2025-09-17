@@ -19,7 +19,7 @@ export interface ICategory {
 
 const CategorySchema = new Schema<ICategory>(
   {
-    _id: { type: String, required: true },
+    _id: { type: Schema.Types.Mixed }, // Allow both String and ObjectId
     name: { type: String, required: true },
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: Date.now },
@@ -31,7 +31,6 @@ const CategorySchema = new Schema<ICategory>(
   },
   {
     timestamps: true,
-    _id: false, // Disable automatic _id generation
     id: false // Disable virtual id getter
   }
 );
