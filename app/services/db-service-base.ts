@@ -119,26 +119,29 @@ export abstract class DbServiceBase {
             throw new Error('Invalid data provided for update. Check the payload and that an id was passed to the service correctly.');
         }
 
-        // Debug: Try to find the document first
         const id = updateRequest.params.id;
         console.log('DEBUG: Attempting to update document with id:', id);
         
-        // Try multiple approaches to find the document
-        const findById = await this.dbModel.findById(id).exec();
-        console.log('DEBUG: findById result:', !!findById);
+        // For categories collection, we need to handle ObjectId conversion
+        let searchId = id;
         
-        const findOne = await this.dbModel.findOne({ _id: id }).exec();
-        console.log('DEBUG: findOne with string _id result:', !!findOne);
+        // Check if this is the categories collection and if the ID is a valid ObjectId format
+        if (this.dbModel.collection.name === 'categories' && /^[0-9a-fA-F]{24}$/.test(id)) {
+            searchId = new Types.ObjectId(id);
+            console.log('DEBUG: Converting to ObjectId for categories collection');
+        }
         
-        // If it's a valid ObjectId format, try with ObjectId
-        if (/^[0-9a-fA-F]{24}$/.test(id)) {
-            const findWithObjectId = await this.dbModel.findOne({ _id: new Types.ObjectId(id) }).exec();
-            console.log('DEBUG: findOne with ObjectId result:', !!findWithObjectId);
+        // First, let's try to find the document to debug
+        const doc = await this.dbModel.findOne({ _id: searchId }).exec();
+        console.log('DEBUG: Found document before update:', !!doc);
+        if (doc) {
+            console.log('DEBUG: Document _id type:', typeof doc._id);
+            console.log('DEBUG: Document _id value:', doc._id);
         }
 
-        // Use findByIdAndUpdate which handles both String and ObjectId types automatically
-        const result = await this.dbModel.findByIdAndUpdate(
-            updateRequest.params.id,
+        // Use native MongoDB update with explicit ID conversion
+        const result = await this.dbModel.findOneAndUpdate(
+            { _id: searchId },
             updateRequest.body,
             { new: true, runValidators: true }
         );
@@ -147,7 +150,7 @@ export abstract class DbServiceBase {
             console.log('update result', result);
             console.log('updateRequest from update method', updateRequest);
             console.log('updateRequest body', updateRequest.body);
-            console.log('id used:', updateRequest.params.id);
+            console.log('id used:', searchId);
         }
 
         if (!result) {
@@ -158,8 +161,18 @@ export abstract class DbServiceBase {
     }
 
     public async delete<TResult = any>(deleteRequest): Promise<TResult> {
-        // Use findByIdAndRemove which handles both String and ObjectId types automatically
-        return await this.dbModel.findByIdAndRemove(deleteRequest.params.id);
+        const id = deleteRequest.params.id;
+        
+        // For categories collection, we need to handle ObjectId conversion
+        let searchId = id;
+        
+        // Check if this is the categories collection and if the ID is a valid ObjectId format
+        if (this.dbModel.collection.name === 'categories' && /^[0-9a-fA-F]{24}$/.test(id)) {
+            searchId = new Types.ObjectId(id);
+            console.log('DEBUG: Converting to ObjectId for categories collection delete');
+        }
+        
+        return await this.dbModel.findOneAndDelete({ _id: searchId });
     }
 
     protected async handlePagedResult<TResult>(query: Query<TResult, any>): Promise<DbPagedResults<TResult>> {
