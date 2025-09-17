@@ -2,6 +2,7 @@ import { Query, Error, Types } from 'mongoose';
 import { DbQuery, DbPagedResults } from '../models';
 import { ConnectionConfig } from './configuration/connection-config';
 import { MongooseQueryParser } from 'mongoose-query-parser';
+import { ObjectId } from 'mongodb';
 
 export abstract class DbServiceBase {
     private db: any;
@@ -119,27 +120,26 @@ export abstract class DbServiceBase {
             throw new Error('Invalid data provided for update. Check the payload and that an id was passed to the service correctly.');
         }
 
-        // Use the ID directly as the schema defines _id as String type
-        const queryId = updateRequest.params.id;
+        // Handle mixed ID types - some documents use ObjectId, some use String
+        let queryId = updateRequest.params.id;
+        let query;
 
-        // Debug: First check if document exists
-        console.log('DEBUG: Looking for document with _id:', queryId);
-        const existingDoc = await this.dbModel.findOne({ _id: queryId });
-        console.log('DEBUG: Found existing document?', !!existingDoc);
-        if (existingDoc) {
-            console.log('DEBUG: Existing doc _id:', existingDoc._id);
-            console.log('DEBUG: Existing doc _id type:', typeof existingDoc._id);
+        // Check if it's a valid ObjectId format (24 hex characters)
+        if (/^[0-9a-fA-F]{24}$/.test(queryId)) {
+            // Try both ObjectId and string
+            query = {
+                $or: [
+                    { _id: queryId },
+                    { _id: new ObjectId(queryId) }
+                ]
+            };
+        } else {
+            // Not an ObjectId format, use as string
+            query = { _id: queryId };
         }
 
-        // Debug: Also check all documents to see what IDs exist
-        const allDocs = await this.dbModel.find({}).select('_id name').limit(10);
-        console.log('DEBUG: Sample documents in collection:');
-        allDocs.forEach(doc => {
-            console.log(`  _id: ${doc._id} (type: ${typeof doc._id}), name: ${doc.name}`);
-        });
-
         const result = await this.dbModel.findOneAndUpdate(
-            { _id: queryId },
+            query,
             updateRequest.body,
             { new: true, runValidators: true }
         );
@@ -149,7 +149,7 @@ export abstract class DbServiceBase {
             console.log('updateRequest from update method', updateRequest);
             console.log('updateRequest body', updateRequest.body);
             console.log('queryId used:', queryId);
-            console.log('queryId type:', typeof queryId);
+            console.log('query used:', JSON.stringify(query));
         }
 
         if (!result) {
@@ -160,10 +160,25 @@ export abstract class DbServiceBase {
     }
 
     public async delete<TResult = any>(deleteRequest): Promise<TResult> {
-        // Use the ID directly as the schema defines _id as String type
+        // Handle mixed ID types - some documents use ObjectId, some use String
         const queryId = deleteRequest.params.id;
+        let query;
+
+        // Check if it's a valid ObjectId format (24 hex characters)
+        if (/^[0-9a-fA-F]{24}$/.test(queryId)) {
+            // Try both ObjectId and string
+            query = {
+                $or: [
+                    { _id: queryId },
+                    { _id: new ObjectId(queryId) }
+                ]
+            };
+        } else {
+            // Not an ObjectId format, use as string
+            query = { _id: queryId };
+        }
         
-        return await this.dbModel.remove({ _id: queryId });
+        return await this.dbModel.remove(query);
     }
 
     protected async handlePagedResult<TResult>(query: Query<TResult, any>): Promise<DbPagedResults<TResult>> {
