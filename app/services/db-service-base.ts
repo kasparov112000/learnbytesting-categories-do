@@ -139,10 +139,14 @@ export abstract class DbServiceBase {
             console.log('DEBUG: Document _id value:', doc._id);
         }
 
+        // Remove _id from update body to prevent immutable field error
+        const updateBody = { ...updateRequest.body };
+        delete updateBody._id;
+        
         // Use native MongoDB update with explicit ID conversion
         const result = await this.dbModel.findOneAndUpdate(
             { _id: searchId },
-            updateRequest.body,
+            updateBody,
             { new: true, runValidators: true }
         );
 
