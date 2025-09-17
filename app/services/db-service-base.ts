@@ -2,7 +2,6 @@ import { Query, Error, Types } from 'mongoose';
 import { DbQuery, DbPagedResults } from '../models';
 import { ConnectionConfig } from './configuration/connection-config';
 import { MongooseQueryParser } from 'mongoose-query-parser';
-import { ObjectId } from 'mongodb';
 
 export abstract class DbServiceBase {
     private db: any;
@@ -130,7 +129,7 @@ export abstract class DbServiceBase {
             query = {
                 $or: [
                     { _id: queryId },
-                    { _id: new ObjectId(queryId) }
+                    { _id: new Types.ObjectId(queryId) }
                 ]
             };
         } else {
@@ -170,7 +169,7 @@ export abstract class DbServiceBase {
             query = {
                 $or: [
                     { _id: queryId },
-                    { _id: new ObjectId(queryId) }
+                    { _id: new Types.ObjectId(queryId) }
                 ]
             };
         } else {
