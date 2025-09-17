@@ -126,12 +126,16 @@ export abstract class DbServiceBase {
         // Check if it's a valid ObjectId format (24 hex characters)
         if (/^[0-9a-fA-F]{24}$/.test(queryId)) {
             // Try both ObjectId and string
+            const objectId = new Types.ObjectId(queryId);
             query = {
                 $or: [
                     { _id: queryId },
-                    { _id: new Types.ObjectId(queryId) }
+                    { _id: objectId }
                 ]
             };
+            console.log('DEBUG: Created ObjectId:', objectId);
+            console.log('DEBUG: ObjectId toString():', objectId.toString());
+            console.log('DEBUG: ObjectId constructor name:', objectId.constructor.name);
         } else {
             // Not an ObjectId format, use as string
             query = { _id: queryId };
@@ -148,7 +152,9 @@ export abstract class DbServiceBase {
             console.log('updateRequest from update method', updateRequest);
             console.log('updateRequest body', updateRequest.body);
             console.log('queryId used:', queryId);
-            console.log('query used:', JSON.stringify(query));
+            console.log('query object:', query);
+            console.log('query.$or[0]:', query.$or ? query.$or[0] : 'N/A');
+            console.log('query.$or[1]:', query.$or ? query.$or[1] : 'N/A');
         }
 
         if (!result) {
