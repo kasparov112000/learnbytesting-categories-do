@@ -1,5 +1,11 @@
 import { Schema, model, Document } from 'mongoose';
 
+export interface QuestionTypeConfig {
+  type: string;
+  displayName: string;
+  isEnabled: boolean;
+}
+
 export interface ICategory {
   _id: string;
   name: string;
@@ -10,6 +16,7 @@ export interface ICategory {
   createUuid: string;
   children: ICategory[];
   parent?: string;
+  allowedQuestionTypes?: QuestionTypeConfig[];
   $getAllSubdocs: () => any[];
   $isDeleted: () => boolean;
   $isSaved: () => boolean;
@@ -28,6 +35,13 @@ const CategorySchema = new Schema<ICategory>(
     createUuid: { type: String },
     children: [{ type: Schema.Types.Mixed }],
     parent: { type: String },
+    allowedQuestionTypes: [
+      {
+        type: { type: String, required: true },
+        displayName: { type: String, required: true },
+        isEnabled: { type: Boolean, default: true }
+      }
+    ],
   },
   {
     timestamps: true,
@@ -52,6 +66,7 @@ export class Category implements ICategory {
   createUuid: string;
   children: Category[];
   parent?: string;
+  allowedQuestionTypes?: QuestionTypeConfig[];
 
   constructor(data: Partial<ICategory>) {
     this._id = data._id || '';
@@ -63,6 +78,7 @@ export class Category implements ICategory {
     this.createUuid = data.createUuid || '';
     this.children = (data.children || []).map(child => new Category(child));
     this.parent = data.parent;
+    this.allowedQuestionTypes = data.allowedQuestionTypes || [];
   }
 
   $getAllSubdocs() {

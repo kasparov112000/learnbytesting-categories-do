@@ -63,15 +63,30 @@ export class CategoryService extends DbMicroServiceBase {
   public async getAll(req, res) {
     try {
       const results = await this.dbService.findAll();
+
+      // Log the first category to verify allowedQuestionTypes is present
+      if (results && results.length > 0) {
+        console.log('[CategoryService.getAll] First category sample:', {
+          _id: results[0]._id,
+          name: results[0].name,
+          hasAllowedQuestionTypes: !!results[0].allowedQuestionTypes,
+          allowedQuestionTypes: results[0].allowedQuestionTypes
+        });
+
+        // Log all categories that have allowedQuestionTypes
+        const categoriesWithTypes = results.filter(cat => cat.allowedQuestionTypes && cat.allowedQuestionTypes.length > 0);
+        console.log(`[CategoryService.getAll] Found ${categoriesWithTypes.length} categories with allowedQuestionTypes out of ${results.length} total`);
+      }
+
       return res.status(200).json({
         result: results,
         count: results.length
       });
     } catch (error) {
       console.error("Error getting all categories:", error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: "Failed to retrieve categories",
-        message: error.message 
+        message: error.message
       });
     }
   }
