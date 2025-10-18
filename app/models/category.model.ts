@@ -6,6 +6,24 @@ export interface QuestionTypeConfig {
   isEnabled: boolean;
 }
 
+export interface CustomFieldConfig {
+  name: string;           // Field identifier (e.g., "eco", "opening_variation")
+  displayName: string;    // Human-readable name (e.g., "ECO Code", "Opening Variation")
+  type: 'text' | 'number' | 'dropdown' | 'textarea' | 'checkbox' | 'date';
+  required: boolean;
+  options?: string[];     // For dropdown type
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: any;
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    minLength?: number;
+    maxLength?: number;
+  };
+}
+
 export interface ICategory {
   _id: string;
   name: string;
@@ -17,6 +35,7 @@ export interface ICategory {
   children: ICategory[];
   parent?: string;
   allowedQuestionTypes?: QuestionTypeConfig[];
+  customFields?: CustomFieldConfig[];
   $getAllSubdocs: () => any[];
   $isDeleted: () => boolean;
   $isSaved: () => boolean;
@@ -40,6 +59,29 @@ const CategorySchema = new Schema<ICategory>(
         type: { type: String, required: true },
         displayName: { type: String, required: true },
         isEnabled: { type: Boolean, default: true }
+      }
+    ],
+    customFields: [
+      {
+        name: { type: String, required: true },
+        displayName: { type: String, required: true },
+        type: {
+          type: String,
+          required: true,
+          enum: ['text', 'number', 'dropdown', 'textarea', 'checkbox', 'date']
+        },
+        required: { type: Boolean, default: false },
+        options: [{ type: String }],
+        placeholder: { type: String },
+        helpText: { type: String },
+        defaultValue: { type: Schema.Types.Mixed },
+        validation: {
+          min: { type: Number },
+          max: { type: Number },
+          pattern: { type: String },
+          minLength: { type: Number },
+          maxLength: { type: Number }
+        }
       }
     ],
   },
@@ -67,6 +109,7 @@ export class Category implements ICategory {
   children: Category[];
   parent?: string;
   allowedQuestionTypes?: QuestionTypeConfig[];
+  customFields?: CustomFieldConfig[];
 
   constructor(data: Partial<ICategory>) {
     this._id = data._id || '';
@@ -79,6 +122,7 @@ export class Category implements ICategory {
     this.children = (data.children || []).map(child => new Category(child));
     this.parent = data.parent;
     this.allowedQuestionTypes = data.allowedQuestionTypes || [];
+    this.customFields = data.customFields || [];
   }
 
   $getAllSubdocs() {
