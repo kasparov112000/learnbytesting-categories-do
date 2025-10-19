@@ -218,11 +218,15 @@ export class CategoryService extends DbMicroServiceBase {
     req: Request,
     res: Response
   ): Promise<void> {
+    const requestStart = Date.now();
+    console.log('[PERF-BACKEND] ========== gridFlatten START ==========');
+    console.log('[PERF-BACKEND] Request received at:', new Date().toISOString());
+
     try {
       const txnId = uuidv4();
-      
+
       if (!req?.body) {
-        console.log("gridFlatten - Invalid request body");
+        console.log("[PERF-BACKEND] gridFlatten - Invalid request body");
         res.json({
           rows: [],
           lastRow: 0,
@@ -236,9 +240,9 @@ export class CategoryService extends DbMicroServiceBase {
       const params = req.body.params || req.body.session?.body || req.body;
       const userInfo = req.body.userInfo || req.body.session?.user?.userInfo;
       const currentUser = req.body.currentUser || userInfo;
-      
+
       if (!currentUser) {
-        console.log("gridFlatten - No user info provided");
+        console.log("[PERF-BACKEND] gridFlatten - No user info provided");
         res.json({
           rows: [],
           lastRow: 0,
@@ -249,24 +253,34 @@ export class CategoryService extends DbMicroServiceBase {
         return;
       }
 
-      const isAdmin = currentUser?.roles?.some(role => role?.name === "System Administrator") || 
+      const isAdmin = currentUser?.roles?.some(role => role?.name === "System Administrator") ||
                      currentUser['https://learnbytesting_ai/roles']?.includes("Admin");
 
-      console.log("gridFlatten - Input:", {
+      console.log("[PERF-BACKEND] gridFlatten - Input:", {
         hasParams: !!params,
         hasUserInfo: !!userInfo,
-        isAdmin
+        isAdmin,
+        startRow: params?.startRow,
+        endRow: params?.endRow
       });
 
       // Get initial data
+      const dbQueryStart = Date.now();
+      console.log('[PERF-BACKEND] Starting filterByCategory2 database query...');
+
       const initialResults = await this.filterByCategory2(userInfo);
-      console.log("1. Initial results:", {
+
+      const dbQueryDuration = Date.now() - dbQueryStart;
+      console.log('[PERF-BACKEND] DB query completed in:', dbQueryDuration, 'ms');
+      console.log("[PERF-BACKEND] 1. Initial results:", {
         hasResults: !!initialResults,
         resultLength: initialResults?.result?.length
       });
 
       if (!initialResults || !initialResults.result || initialResults.result.length === 0) {
-        console.log("gridFlatten - No results found");
+        console.log("[PERF-BACKEND] gridFlatten - No results found");
+        const noDuration = Date.now() - requestStart;
+        console.log('[PERF-BACKEND] ========== gridFlatten END (no data) - Total:', noDuration, 'ms ==========');
         res.json({
           rows: [],
           lastRow: 0,
@@ -278,42 +292,73 @@ export class CategoryService extends DbMicroServiceBase {
       }
 
       // Flatten the nested structure
+      const flattenStart = Date.now();
+      console.log('[PERF-BACKEND] Starting flattenNestedStructure...');
+
       let flattenedCategories = this.flattenNestedStructure(initialResults.result);
-      console.log("2. Flattened categories:", {
+
+      const flattenDuration = Date.now() - flattenStart;
+      console.log('[PERF-BACKEND] Flatten completed in:', flattenDuration, 'ms');
+      console.log("[PERF-BACKEND] 2. Flattened categories:", {
         count: flattenedCategories.length,
         sample: flattenedCategories[0]
       });
 
       // Apply filtering if needed
+      let filterDuration = 0;
       if (params?.filterModel) {
+        const filterStart = Date.now();
+        console.log('[PERF-BACKEND] Starting filtering...');
+
         flattenedCategories = GridFilterSearchHelper.handleSearchFilter(
           params.filterModel,
           flattenedCategories
         )[0];
-        console.log("3. After filtering:", {
+
+        filterDuration = Date.now() - filterStart;
+        console.log('[PERF-BACKEND] Filtering completed in:', filterDuration, 'ms');
+        console.log("[PERF-BACKEND] 3. After filtering:", {
           count: flattenedCategories.length
         });
       }
 
       // Apply sorting
+      let sortDuration = 0;
       if (params?.sortModel?.length > 0) {
+        const sortStart = Date.now();
+        console.log('[PERF-BACKEND] Starting sorting...');
+
         flattenedCategories = this.sortData(flattenedCategories, params.sortModel);
-        console.log("4. After sorting:", {
+
+        sortDuration = Date.now() - sortStart;
+        console.log('[PERF-BACKEND] Sorting completed in:', sortDuration, 'ms');
+        console.log("[PERF-BACKEND] 4. After sorting:", {
           count: flattenedCategories.length
         });
       }
 
       // Apply pagination
+      const paginationStart = Date.now();
       const startRow = parseInt(params?.startRow?.toString() || "0", 10);
       const endRow = parseInt(params?.endRow?.toString() || flattenedCategories.length.toString(), 10);
       const paginatedData = flattenedCategories.slice(startRow, endRow);
+      const paginationDuration = Date.now() - paginationStart;
 
-      console.log("5. Final response:", {
+      console.log("[PERF-BACKEND] 5. Final response:", {
         total: flattenedCategories.length,
         pageSize: paginatedData.length,
         startRow,
         endRow
       });
+
+      const totalDuration = Date.now() - requestStart;
+      console.log('[PERF-BACKEND] ===== Performance Breakdown =====');
+      console.log('[PERF-BACKEND]   DB Query:', dbQueryDuration, 'ms', `(${((dbQueryDuration/totalDuration)*100).toFixed(1)}%)`);
+      console.log('[PERF-BACKEND]   Flatten:', flattenDuration, 'ms', `(${((flattenDuration/totalDuration)*100).toFixed(1)}%)`);
+      console.log('[PERF-BACKEND]   Filter:', filterDuration, 'ms', `(${((filterDuration/totalDuration)*100).toFixed(1)}%)`);
+      console.log('[PERF-BACKEND]   Sort:', sortDuration, 'ms', `(${((sortDuration/totalDuration)*100).toFixed(1)}%)`);
+      console.log('[PERF-BACKEND]   Pagination:', paginationDuration, 'ms', `(${((paginationDuration/totalDuration)*100).toFixed(1)}%)`);
+      console.log('[PERF-BACKEND] ========== gridFlatten END - Total:', totalDuration, 'ms ==========');
 
       res.json({
         rows: paginatedData,
@@ -324,7 +369,9 @@ export class CategoryService extends DbMicroServiceBase {
       });
 
     } catch (error) {
-      console.error('Error in gridFlatten:', error);
+      const errorDuration = Date.now() - requestStart;
+      console.error('[PERF-BACKEND] ========== gridFlatten ERROR after', errorDuration, 'ms ==========');
+      console.error('[PERF-BACKEND] Error in gridFlatten:', error);
       res.json({
         rows: [],
         lastRow: 0,
