@@ -90,6 +90,24 @@ export default function (app, express, serviceobject) {
   });
 
   router.put(`${baseUrl}/:id`, (req, res) => {
+    console.log("========== CATEGORY PUT REQUEST ==========");
+    console.log("Category ID:", req.params.id);
+    console.log("Request Body Keys:", Object.keys(req.body));
+    console.log("Has allowedQuestionTypes:", !!req.body.allowedQuestionTypes);
+
+    if (req.body.allowedQuestionTypes) {
+      console.log("allowedQuestionTypes count:", req.body.allowedQuestionTypes.length);
+      req.body.allowedQuestionTypes.forEach((qt, index) => {
+        console.log(`QuestionType[${index}]:`, {
+          type: qt.type,
+          displayName: qt.displayName,
+          isEnabled: qt.isEnabled,
+          visibleToChildren: qt.visibleToChildren,
+          allKeys: Object.keys(qt)
+        });
+      });
+    }
+
     serviceobject.put(req, res);
   });
 

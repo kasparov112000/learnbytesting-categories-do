@@ -4,6 +4,7 @@ export interface QuestionTypeConfig {
   type: string;
   displayName: string;
   isEnabled: boolean;
+  visibleToChildren?: boolean; // Controls if this question type is inherited by child categories
 }
 
 export interface CustomFieldConfig {
@@ -58,7 +59,8 @@ const CategorySchema = new Schema<ICategory>(
       {
         type: { type: String, required: true },
         displayName: { type: String, required: true },
-        isEnabled: { type: Boolean, default: true }
+        isEnabled: { type: Boolean, default: true },
+        visibleToChildren: { type: Boolean, default: true }
       }
     ],
     customFields: [
