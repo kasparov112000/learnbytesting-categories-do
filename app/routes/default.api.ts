@@ -80,6 +80,21 @@ export default function (app, express, serviceobject) {
     serviceobject.createCategory(req, res);
   });
 
+  // Get category with resolved (inherited) aiConfig
+  router.get(`${baseUrl}/:id/ai-config`, (req, res) => {
+    console.log("ROUTE HIT: GET /categories/:id/ai-config");
+    console.log("Category ID:", req.params.id);
+    serviceobject.getCategoryWithResolvedAiConfig(req, res);
+  });
+
+  // Update aiConfig for a category (handles nested document structure)
+  router.put(`${baseUrl}/:id/ai-config`, (req, res) => {
+    console.log("ROUTE HIT: PUT /categories/:id/ai-config");
+    console.log("Category ID:", req.params.id);
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    serviceobject.updateCategoryAiConfig(req, res);
+  });
+
   // Less specific routes should come after
   router.post(`${baseUrl}/:id`, (req, res) => {
     serviceobject.getByLineOfService(req, res);

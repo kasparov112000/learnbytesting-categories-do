@@ -1439,4 +1439,330 @@ export class CategoryService extends DbMicroServiceBase {
       });
     }
   }
+
+  /**
+   * Get a category by ID with resolved (inherited) aiConfig
+   * Traverses up the parent chain and merges aiConfig from ancestors
+   * Child config takes precedence over parent config
+   */
+  public async getCategoryWithResolvedAiConfig(req, res) {
+    const categoryId = req.params.id;
+
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Category ID is required"
+      });
+    }
+
+    try {
+      console.log(`[aiConfig] Getting category with resolved aiConfig for ID: ${categoryId}`);
+
+      // Get all root categories to search through
+      const allRootCategories = await this.dbService.findAll();
+
+      // Find the category in the nested structure and build the parent chain
+      const categoryChain = this.findCategoryChain(allRootCategories, categoryId);
+
+      if (!categoryChain || categoryChain.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Category with ID ${categoryId} not found`
+        });
+      }
+
+      // The target category is the last in the chain
+      const targetCategory = categoryChain[categoryChain.length - 1];
+
+      // Resolve the aiConfig by merging from root to leaf
+      const resolvedAiConfig = this.resolveAiConfig(categoryChain);
+
+      console.log(`[aiConfig] Resolved aiConfig for ${targetCategory.name}:`, JSON.stringify(resolvedAiConfig, null, 2));
+
+      return res.status(200).json({
+        success: true,
+        category: {
+          _id: targetCategory._id,
+          name: targetCategory.name,
+          parent: targetCategory.parent,
+          aiConfig: targetCategory.aiConfig,
+          resolvedAiConfig: resolvedAiConfig,
+          ancestorChain: categoryChain.map(c => ({ _id: c._id, name: c.name }))
+        }
+      });
+    } catch (error) {
+      console.error("[aiConfig] Error getting category with resolved aiConfig:", error);
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while getting category aiConfig",
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Find a category and return the full chain from root to the target category
+   */
+  private findCategoryChain(categories: any[], targetId: string, currentChain: any[] = []): any[] | null {
+    for (const category of categories) {
+      // Build a chain including this category
+      const newChain = [...currentChain, category];
+
+      // Check if this is the target
+      if (category._id && category._id.toString() === targetId.toString()) {
+        return newChain;
+      }
+
+      // Search in children
+      if (category.children && category.children.length > 0) {
+        const result = this.findCategoryChain(category.children, targetId, newChain);
+        if (result) {
+          return result;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolve aiConfig by merging configs from root to leaf
+   * Later configs in the chain override earlier ones
+   */
+  private resolveAiConfig(categoryChain: any[]): any {
+    let resolvedConfig: any = {};
+
+    for (const category of categoryChain) {
+      // Skip if no aiConfig or inheritance is disabled
+      if (!category.aiConfig) continue;
+
+      // Check if this category allows inheritance
+      // (if a parent has inheritToChildren: false, don't inherit from it)
+      // Note: We check this on the current category's config for its children
+
+      // Deep merge the aiConfig
+      resolvedConfig = this.deepMergeAiConfig(resolvedConfig, category.aiConfig);
+    }
+
+    return resolvedConfig;
+  }
+
+  /**
+   * Deep merge two aiConfig objects
+   * The second (child) config takes precedence
+   */
+  private deepMergeAiConfig(parentConfig: any, childConfig: any): any {
+    if (!parentConfig) return childConfig;
+    if (!childConfig) return parentConfig;
+
+    const result: any = { ...parentConfig };
+
+    // Merge top-level string fields (child takes precedence if defined)
+    if (childConfig.systemPrompt) {
+      result.systemPrompt = childConfig.systemPrompt;
+    }
+    if (childConfig.domainContext) {
+      result.domainContext = childConfig.domainContext;
+    }
+
+    // Merge flashcardConfig
+    if (childConfig.flashcardConfig) {
+      result.flashcardConfig = {
+        ...parentConfig.flashcardConfig,
+        ...childConfig.flashcardConfig
+      };
+
+      // Arrays should be replaced, not merged (child's arrays take precedence)
+      if (childConfig.flashcardConfig.defaultCategories) {
+        result.flashcardConfig.defaultCategories = childConfig.flashcardConfig.defaultCategories;
+      }
+      if (childConfig.flashcardConfig.focusAreas) {
+        result.flashcardConfig.focusAreas = childConfig.flashcardConfig.focusAreas;
+      }
+    }
+
+    // Merge questionConfig
+    if (childConfig.questionConfig) {
+      result.questionConfig = {
+        ...parentConfig.questionConfig,
+        ...childConfig.questionConfig
+      };
+
+      if (childConfig.questionConfig.questionTypes) {
+        result.questionConfig.questionTypes = childConfig.questionConfig.questionTypes;
+      }
+    }
+
+    // Merge transcriptConfig
+    if (childConfig.transcriptConfig) {
+      result.transcriptConfig = {
+        ...parentConfig.transcriptConfig,
+        ...childConfig.transcriptConfig
+      };
+
+      if (childConfig.transcriptConfig.extractionRules) {
+        result.transcriptConfig.extractionRules = childConfig.transcriptConfig.extractionRules;
+      }
+    }
+
+    // inheritToChildren from the child takes precedence
+    if (childConfig.inheritToChildren !== undefined) {
+      result.inheritToChildren = childConfig.inheritToChildren;
+    }
+
+    return result;
+  }
+
+  /**
+   * Update aiConfig for a category in the deeply nested structure
+   * This method properly handles the nested document structure where all categories
+   * are stored as children within a single root document
+   */
+  public async updateCategoryAiConfig(req, res) {
+    console.log("==== START UPDATE CATEGORY AI CONFIG ====");
+
+    const categoryId = req.params.id;
+    const aiConfig = req.body.aiConfig;
+
+    console.log("Update aiConfig request:", {
+      categoryId,
+      aiConfig: JSON.stringify(aiConfig, null, 2)
+    });
+
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Category ID is required"
+      });
+    }
+
+    try {
+      // Import CategoryModel - it's the same one used in db-micro-service-base
+      const { CategoryModel } = require('../models/category.model');
+
+      // Get all root categories (actual MongoDB documents)
+      const allRootCategories = await CategoryModel.find({}).lean();
+      console.log(`Found ${allRootCategories.length} root categories`);
+
+      // Find which root category contains the target (could be root itself or nested)
+      let targetRootId = null;
+      let isTargetAtRoot = false;
+      let updatedRootDoc = null;
+
+      for (const rootCategory of allRootCategories) {
+        const rootIdStr = rootCategory._id.toString();
+
+        // Check if the root category itself is the target
+        if (rootIdStr === categoryId.toString()) {
+          console.log(`Found target at root level: ${rootCategory.name} (${rootIdStr})`);
+          targetRootId = rootIdStr;
+          isTargetAtRoot = true;
+          break;
+        }
+
+        // Search recursively in children
+        const findInChildren = (children: any[]): boolean => {
+          if (!children || !Array.isArray(children)) return false;
+          for (const child of children) {
+            if (child._id && child._id.toString() === categoryId.toString()) {
+              return true;
+            }
+            if (child.children && findInChildren(child.children)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        if (rootCategory.children && findInChildren(rootCategory.children)) {
+          console.log(`Found target nested in root: ${rootCategory.name} (${rootIdStr})`);
+          targetRootId = rootIdStr;
+          updatedRootDoc = rootCategory;
+          break;
+        }
+      }
+
+      if (!targetRootId) {
+        console.error(`Category with ID ${categoryId} not found in any root category`);
+        return res.status(404).json({
+          success: false,
+          message: `Category with ID ${categoryId} not found`
+        });
+      }
+
+      console.log(`Target root ID: ${targetRootId}, isTargetAtRoot: ${isTargetAtRoot}`);
+
+      let updateResult;
+
+      if (isTargetAtRoot) {
+        // Direct update to root document using $set
+        console.log("Updating root document directly with $set");
+        updateResult = await CategoryModel.findByIdAndUpdate(
+          targetRootId,
+          {
+            $set: {
+              aiConfig: aiConfig,
+              modifiedDate: new Date()
+            }
+          },
+          { new: true }
+        );
+      } else {
+        // For nested categories, update the nested object and save the entire children array
+        const updateInChildren = (children: any[]): boolean => {
+          if (!children || !Array.isArray(children)) return false;
+          for (const child of children) {
+            if (child._id && child._id.toString() === categoryId.toString()) {
+              child.aiConfig = aiConfig;
+              child.modifiedDate = new Date();
+              console.log(`Updated nested category in memory: ${child.name}`);
+              return true;
+            }
+            if (child.children && updateInChildren(child.children)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        updateInChildren(updatedRootDoc.children);
+
+        // Save the root document with updated children
+        console.log("Saving root document with updated nested category");
+        updateResult = await CategoryModel.findByIdAndUpdate(
+          targetRootId,
+          {
+            $set: {
+              children: updatedRootDoc.children,
+              modifiedDate: new Date()
+            }
+          },
+          { new: true }
+        );
+      }
+
+      if (!updateResult) {
+        console.error(`Failed to update category - findByIdAndUpdate returned null`);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to update category in database"
+        });
+      }
+
+      console.log("Category aiConfig updated successfully");
+      console.log("==== END UPDATE CATEGORY AI CONFIG - SUCCESS ====");
+      return res.status(200).json({
+        success: true,
+        message: "AI configuration updated successfully"
+      });
+
+    } catch (error) {
+      console.error("Error updating category aiConfig:", error);
+      console.log("==== END UPDATE CATEGORY AI CONFIG - ERROR ====");
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while updating AI configuration",
+        error: error.message
+      });
+    }
+  }
 }

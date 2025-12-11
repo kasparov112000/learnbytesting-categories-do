@@ -25,6 +25,46 @@ export interface CustomFieldConfig {
   };
 }
 
+// AI Configuration for content generation (flashcards, questions, etc.)
+export interface FlashcardAiConfig {
+  additionalPrompt?: string;      // Extra instructions for flashcard generation
+  defaultCategories?: string[];   // Default flashcard categories like ["Opening Theory", "Tactics"]
+  focusAreas?: string[];          // Areas to focus on ["opening principles", "tactical patterns"]
+  defaultDifficulty?: number;     // 1-5 difficulty scale
+}
+
+export interface QuestionAiConfig {
+  additionalPrompt?: string;      // Extra instructions for question generation
+  defaultDifficulty?: string;     // beginner|intermediate|advanced|expert
+  focusArea?: string;             // opening|middlegame|endgame|tactics|strategy|all
+  questionTypes?: string[];       // Types of questions to generate
+}
+
+export interface TranscriptAiConfig {
+  additionalPrompt?: string;      // How to analyze transcripts for this subject
+  extractionRules?: string[];     // Specific extraction rules for this domain
+}
+
+export interface AiConfig {
+  // General system prompt for all AI operations
+  systemPrompt?: string;
+
+  // Domain-specific context that applies to all operations
+  domainContext?: string;
+
+  // Flashcard generation settings
+  flashcardConfig?: FlashcardAiConfig;
+
+  // Question generation settings
+  questionConfig?: QuestionAiConfig;
+
+  // Transcript analysis settings
+  transcriptConfig?: TranscriptAiConfig;
+
+  // Whether children inherit this config (default: true)
+  inheritToChildren?: boolean;
+}
+
 export interface ICategory {
   _id: string;
   name: string;
@@ -37,6 +77,7 @@ export interface ICategory {
   parent?: string;
   allowedQuestionTypes?: QuestionTypeConfig[];
   customFields?: CustomFieldConfig[];
+  aiConfig?: AiConfig;
   $getAllSubdocs: () => any[];
   $isDeleted: () => boolean;
   $isSaved: () => boolean;
@@ -86,6 +127,27 @@ const CategorySchema = new Schema<ICategory>(
         }
       }
     ],
+    aiConfig: {
+      systemPrompt: { type: String },
+      domainContext: { type: String },
+      flashcardConfig: {
+        additionalPrompt: { type: String },
+        defaultCategories: [{ type: String }],
+        focusAreas: [{ type: String }],
+        defaultDifficulty: { type: Number, min: 1, max: 5 }
+      },
+      questionConfig: {
+        additionalPrompt: { type: String },
+        defaultDifficulty: { type: String, enum: ['beginner', 'intermediate', 'advanced', 'expert'] },
+        focusArea: { type: String, enum: ['opening', 'middlegame', 'endgame', 'tactics', 'strategy', 'all'] },
+        questionTypes: [{ type: String }]
+      },
+      transcriptConfig: {
+        additionalPrompt: { type: String },
+        extractionRules: [{ type: String }]
+      },
+      inheritToChildren: { type: Boolean, default: true }
+    },
   },
   {
     timestamps: true,
@@ -112,6 +174,7 @@ export class Category implements ICategory {
   parent?: string;
   allowedQuestionTypes?: QuestionTypeConfig[];
   customFields?: CustomFieldConfig[];
+  aiConfig?: AiConfig;
 
   constructor(data: Partial<ICategory>) {
     this._id = data._id || '';
@@ -125,6 +188,7 @@ export class Category implements ICategory {
     this.parent = data.parent;
     this.allowedQuestionTypes = data.allowedQuestionTypes || [];
     this.customFields = data.customFields || [];
+    this.aiConfig = data.aiConfig;
   }
 
   $getAllSubdocs() {
