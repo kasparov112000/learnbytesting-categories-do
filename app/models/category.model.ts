@@ -45,12 +45,21 @@ export interface TranscriptAiConfig {
   extractionRules?: string[];     // Specific extraction rules for this domain
 }
 
+export interface CategoryGenerationConfig {
+  instructions?: string;          // Instructions for AI to generate subcategories
+  maxDepth?: number;              // Maximum nesting depth for generated categories (default: 4)
+  suggestedStructure?: string;    // Example structure hint for the AI
+}
+
 export interface AiConfig {
   // General system prompt for all AI operations
   systemPrompt?: string;
 
   // Domain-specific context that applies to all operations
   domainContext?: string;
+
+  // Category generation settings (for AI to create subcategories)
+  categoryGenerationConfig?: CategoryGenerationConfig;
 
   // Flashcard generation settings
   flashcardConfig?: FlashcardAiConfig;
@@ -130,6 +139,11 @@ const CategorySchema = new Schema<ICategory>(
     aiConfig: {
       systemPrompt: { type: String },
       domainContext: { type: String },
+      categoryGenerationConfig: {
+        instructions: { type: String },
+        maxDepth: { type: Number, min: 2, max: 6, default: 4 },
+        suggestedStructure: { type: String }
+      },
       flashcardConfig: {
         additionalPrompt: { type: String },
         defaultCategories: [{ type: String }],

@@ -95,6 +95,21 @@ export default function (app, express, serviceobject) {
     serviceobject.updateCategoryAiConfig(req, res);
   });
 
+  // Import category tree from JSON
+  router.post(`${baseUrl}/import`, (req, res) => {
+    console.log("ROUTE HIT: POST /categories/import");
+    console.log("Categories count:", req.body.categories?.length || 0);
+    console.log("Options:", req.body.options || {});
+    serviceobject.importCategoryTree(req, res);
+  });
+
+  // Export category tree to JSON
+  router.get(`${baseUrl}/export`, (req, res) => {
+    console.log("ROUTE HIT: GET /categories/export");
+    console.log("Query params:", req.query);
+    serviceobject.exportCategoryTree(req, res);
+  });
+
   // Less specific routes should come after
   router.post(`${baseUrl}/:id`, (req, res) => {
     serviceobject.getByLineOfService(req, res);

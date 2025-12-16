@@ -1613,6 +1613,569 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   /**
+   * Import a complete category tree from JSON
+   * Accepts a JSON structure with categories to import
+   * Can import as root categories OR as children of a specific parent category
+   *
+   * Expected format:
+   * {
+   *   parentId: "optional-parent-id", // If provided, imports as children of this category
+   *   categories: [
+   *     {
+   *       name: "Chess",
+   *       aiConfig: { ... },
+   *       children: [
+   *         { name: "Openings", children: [...] },
+   *         { name: "Tactics", children: [...] }
+   *       ]
+   *     }
+   *   ],
+   *   options: { ... }
+   * }
+   */
+  public async importCategoryTree(req, res) {
+    console.log("==== START CATEGORY TREE IMPORT ====");
+    const startTime = Date.now();
+
+    try {
+      const { parentId, categories, options = {} } = req.body;
+
+      console.log("Import request:", {
+        parentId: parentId || 'none (root import)',
+        categoriesCount: categories?.length || 0,
+        options
+      });
+
+      if (!categories || !Array.isArray(categories)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid request: 'categories' array is required"
+        });
+      }
+
+      const {
+        updateExisting = true,      // Update existing categories if found by name/_id
+        matchBy = 'name',           // 'name' | '_id' | 'both'
+        preserveIds = false,        // Keep IDs from input JSON
+        dryRun = false              // If true, validate only without saving
+      } = options;
+
+      console.log("Import options:", { updateExisting, matchBy, preserveIds, dryRun, parentId });
+      console.log(`Processing ${categories.length} categories`);
+
+      const results = {
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: [],
+        details: []
+      };
+
+      // If parentId is provided, import as children of that parent
+      if (parentId) {
+        console.log(`Importing as children of parent: ${parentId}`);
+
+        // Import the CategoryModel
+        const { CategoryModel } = require('../models/category.model');
+
+        // Get all root categories to find the parent
+        const allRootCategories = await CategoryModel.find({}).lean();
+        console.log(`Found ${allRootCategories.length} root categories`);
+
+        // Find the parent category (could be root or nested)
+        let targetRoot = null;
+        let parentCategory = null;
+        let isParentAtRoot = false;
+
+        for (const rootCategory of allRootCategories) {
+          const rootIdStr = rootCategory._id.toString();
+
+          // Check if the root category itself is the parent
+          if (rootIdStr === parentId.toString()) {
+            console.log(`Parent is a root category: ${rootCategory.name}`);
+            targetRoot = rootCategory;
+            parentCategory = rootCategory;
+            isParentAtRoot = true;
+            break;
+          }
+
+          // Search recursively in children
+          const findParentInChildren = (children: any[], parent: any): any => {
+            if (!children || !Array.isArray(children)) return null;
+            for (const child of children) {
+              if (child._id && child._id.toString() === parentId.toString()) {
+                return { found: child, root: rootCategory };
+              }
+              if (child.children) {
+                const result = findParentInChildren(child.children, child);
+                if (result) return result;
+              }
+            }
+            return null;
+          };
+
+          const searchResult = findParentInChildren(rootCategory.children || [], rootCategory);
+          if (searchResult) {
+            console.log(`Parent found nested in root: ${rootCategory.name}`);
+            targetRoot = rootCategory;
+            parentCategory = searchResult.found;
+            break;
+          }
+        }
+
+        if (!parentCategory) {
+          console.error(`Parent category with ID ${parentId} not found`);
+          return res.status(404).json({
+            success: false,
+            message: `Parent category with ID ${parentId} not found`
+          });
+        }
+
+        console.log(`Found parent category: ${parentCategory.name} (${parentCategory._id})`);
+
+        // Initialize children array if needed
+        if (!parentCategory.children) {
+          parentCategory.children = [];
+        }
+
+        // Process each category and add as child of the parent
+        const now = new Date();
+        for (const categoryData of categories) {
+          try {
+            const processedCategory = this.buildCategoryFromImport(
+              categoryData,
+              parentId.toString(),
+              { preserveIds },
+              now
+            );
+
+            // Check if category already exists in parent's children
+            const existingIndex = parentCategory.children.findIndex(
+              c => c.name && c.name.toLowerCase() === categoryData.name.toLowerCase()
+            );
+
+            if (existingIndex >= 0) {
+              if (updateExisting) {
+                // Update existing child
+                parentCategory.children[existingIndex] = processedCategory;
+                results.updated++;
+                results.details.push({ name: processedCategory.name, action: 'updated' });
+              } else {
+                results.skipped++;
+                results.details.push({ name: categoryData.name, action: 'skipped' });
+              }
+            } else {
+              // Add new child
+              parentCategory.children.push(processedCategory);
+              results.created++;
+              results.details.push({ name: processedCategory.name, action: 'created' });
+            }
+          } catch (error) {
+            console.error(`Error processing category ${categoryData.name}:`, error);
+            results.errors.push({
+              name: categoryData.name,
+              error: error.message
+            });
+          }
+        }
+
+        // Save the updated root document
+        if (!dryRun) {
+          console.log(`[IMPORT-SAVE] ========== SAVING TO DATABASE ==========`);
+          console.log(`[IMPORT-SAVE] Target root document: ${targetRoot.name} (ID: ${targetRoot._id})`);
+          console.log(`[IMPORT-SAVE] Is parent at root level: ${isParentAtRoot}`);
+          console.log(`[IMPORT-SAVE] Parent category: ${parentCategory.name} (ID: ${parentCategory._id})`);
+          console.log(`[IMPORT-SAVE] Parent category children count: ${parentCategory.children?.length || 0}`);
+          console.log(`[IMPORT-SAVE] New children names:`, parentCategory.children?.map(c => c.name) || []);
+
+          let saveResult;
+          try {
+            if (isParentAtRoot) {
+              // Parent is the root, update children directly
+              console.log(`[IMPORT-SAVE] Strategy: Updating root's children directly...`);
+              console.log(`[IMPORT-SAVE] Query: findByIdAndUpdate with ID: ${targetRoot._id}`);
+
+              saveResult = await CategoryModel.findByIdAndUpdate(
+                targetRoot._id,
+                {
+                  $set: {
+                    children: parentCategory.children,
+                    modifiedDate: now
+                  }
+                },
+                { new: true }
+              );
+
+              console.log(`[IMPORT-SAVE] MongoDB result:`, saveResult ? `Document updated (${saveResult.children?.length || 0} children)` : 'NULL - Document not found!');
+            } else {
+              // Parent is nested, update the entire children tree from root
+              console.log(`[IMPORT-SAVE] Strategy: Parent is nested, updating entire tree from root...`);
+              console.log(`[IMPORT-SAVE] Query: findByIdAndUpdate with ID: ${targetRoot._id}`);
+              console.log(`[IMPORT-SAVE] Root children count to save: ${targetRoot.children?.length || 0}`);
+
+              saveResult = await CategoryModel.findByIdAndUpdate(
+                targetRoot._id,
+                {
+                  $set: {
+                    children: targetRoot.children,
+                    modifiedDate: now
+                  }
+                },
+                { new: true }
+              );
+
+              console.log(`[IMPORT-SAVE] MongoDB result:`, saveResult ? `Document updated (${saveResult.children?.length || 0} children)` : 'NULL - Document not found!');
+            }
+
+            if (!saveResult) {
+              console.error(`[IMPORT-SAVE] ERROR: Document with ID ${targetRoot._id} was not found in database!`);
+            }
+          } catch (dbError) {
+            console.error(`[IMPORT-SAVE] DATABASE ERROR:`, dbError.message);
+            console.error(`[IMPORT-SAVE] Stack:`, dbError.stack);
+          }
+
+          console.log(`[IMPORT-SAVE] Final results: created=${results.created}, updated=${results.updated}`);
+          console.log(`[IMPORT-SAVE] ========== SAVE COMPLETE ==========`);
+        }
+
+      } else {
+        // Original behavior: import as root categories
+        console.log("Importing as root categories (no parentId provided)");
+
+        // Get existing root categories for matching
+        const existingRoots = await this.dbService.findAll();
+        console.log(`Found ${existingRoots.length} existing root categories`);
+
+        // Process each root category
+        for (const categoryData of categories) {
+          try {
+            const processed = await this.processImportCategory(
+              categoryData,
+              null, // No parent for root categories
+              existingRoots,
+              { updateExisting, matchBy, preserveIds, dryRun },
+              { created: [], updated: [], skipped: [], errors: [] }
+            );
+
+            if (processed && !dryRun) {
+              // Save or update the root category
+              const existingRoot = this.findMatchingCategory(categoryData, existingRoots, matchBy);
+
+              if (existingRoot && updateExisting) {
+                // Update existing root
+                await this.dbService.update({
+                  params: { id: existingRoot._id },
+                  body: processed
+                });
+                results.updated++;
+                results.details.push({ _id: existingRoot._id, name: processed.name, action: 'updated' });
+              } else if (!existingRoot) {
+                // Create new root
+                await this.dbService.create(processed);
+                results.created++;
+                results.details.push({ _id: processed._id, name: processed.name, action: 'created' });
+              } else {
+                results.skipped++;
+                results.details.push({ name: categoryData.name, action: 'skipped' });
+              }
+            }
+          } catch (error) {
+            console.error(`Error processing category ${categoryData.name}:`, error);
+            results.errors.push({
+              name: categoryData.name,
+              error: error.message
+            });
+          }
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      console.log(`==== END CATEGORY TREE IMPORT (${duration}ms) ====`);
+      console.log(`Results: created=${results.created}, updated=${results.updated}, skipped=${results.skipped}, errors=${results.errors.length}`);
+
+      return res.status(200).json({
+        success: true,
+        dryRun,
+        duration: `${duration}ms`,
+        parentId: parentId || null,
+        summary: {
+          created: results.created,
+          updated: results.updated,
+          skipped: results.skipped,
+          errors: results.errors.length
+        },
+        details: results.details,
+        errors: results.errors
+      });
+
+    } catch (error) {
+      console.error("Error in importCategoryTree:", error);
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred during category import",
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Build a category object from import data with proper structure
+   */
+  private buildCategoryFromImport(
+    categoryData: any,
+    parentId: string,
+    options: { preserveIds: boolean },
+    now: Date
+  ): any {
+    const { preserveIds } = options;
+
+    const category: any = {
+      _id: preserveIds && categoryData._id ? categoryData._id : generateUuid(),
+      name: categoryData.name,
+      active: categoryData.active !== undefined ? categoryData.active : true,
+      isActive: categoryData.isActive !== undefined ? categoryData.isActive : true,
+      parent: parentId,
+      createUuid: categoryData.createUuid || generateUuid(),
+      createdDate: categoryData.createdDate || now,
+      createCreatedDate: categoryData.createCreatedDate || now,
+      modifiedDate: now,
+      children: []
+    };
+
+    // Copy over optional fields
+    if (categoryData.aiConfig) {
+      category.aiConfig = categoryData.aiConfig;
+    }
+    if (categoryData.allowedQuestionTypes) {
+      category.allowedQuestionTypes = categoryData.allowedQuestionTypes;
+    }
+    if (categoryData.customFields) {
+      category.customFields = categoryData.customFields;
+    }
+
+    // Process children recursively
+    if (categoryData.children && Array.isArray(categoryData.children) && categoryData.children.length > 0) {
+      for (const childData of categoryData.children) {
+        const childCategory = this.buildCategoryFromImport(
+          childData,
+          category._id,
+          options,
+          now
+        );
+        category.children.push(childCategory);
+      }
+    }
+
+    return category;
+  }
+
+  /**
+   * Process a single category and its children recursively during import
+   */
+  private async processImportCategory(
+    categoryData: any,
+    parentId: string | null,
+    existingCategories: any[],
+    options: any,
+    results: any
+  ): Promise<any> {
+    const { preserveIds, matchBy, updateExisting, dryRun } = options;
+    const now = new Date();
+
+    // Find if this category already exists
+    const existing = parentId
+      ? this.findMatchingCategoryInChildren(categoryData, existingCategories, matchBy)
+      : this.findMatchingCategory(categoryData, existingCategories, matchBy);
+
+    // Build the category object
+    const category: any = {
+      _id: preserveIds && categoryData._id ? categoryData._id : (existing?._id || generateUuid()),
+      name: categoryData.name,
+      active: categoryData.active !== undefined ? categoryData.active : true,
+      isActive: categoryData.isActive !== undefined ? categoryData.isActive : true,
+      parent: parentId,
+      createUuid: categoryData.createUuid || generateUuid(),
+      createdDate: existing?.createdDate || categoryData.createdDate || now,
+      createCreatedDate: existing?.createCreatedDate || categoryData.createCreatedDate || now,
+      modifiedDate: now,
+      children: []
+    };
+
+    // Copy over optional fields if present
+    if (categoryData.aiConfig) {
+      category.aiConfig = categoryData.aiConfig;
+    }
+    if (categoryData.allowedQuestionTypes) {
+      category.allowedQuestionTypes = categoryData.allowedQuestionTypes;
+    }
+    if (categoryData.customFields) {
+      category.customFields = categoryData.customFields;
+    }
+
+    // Process children recursively
+    if (categoryData.children && Array.isArray(categoryData.children) && categoryData.children.length > 0) {
+      const existingChildren = existing?.children || [];
+
+      for (const childData of categoryData.children) {
+        const processedChild = await this.processImportCategory(
+          childData,
+          category._id,
+          existingChildren,
+          options,
+          results
+        );
+
+        if (processedChild) {
+          category.children.push(processedChild);
+
+          // Track what happened to this child
+          const existingChild = this.findMatchingCategory(childData, existingChildren, matchBy);
+          if (existingChild && updateExisting) {
+            if (!dryRun) results.updated.push({ _id: processedChild._id, name: processedChild.name, type: 'child' });
+          } else if (!existingChild) {
+            if (!dryRun) results.created.push({ _id: processedChild._id, name: processedChild.name, type: 'child' });
+          }
+        }
+      }
+    }
+
+    return category;
+  }
+
+  /**
+   * Find a matching category by name or ID
+   */
+  private findMatchingCategory(categoryData: any, categories: any[], matchBy: string): any {
+    if (!categories || !Array.isArray(categories)) return null;
+
+    return categories.find(cat => {
+      if (matchBy === '_id') {
+        return cat._id && categoryData._id && cat._id.toString() === categoryData._id.toString();
+      } else if (matchBy === 'name') {
+        return cat.name && categoryData.name && cat.name.toLowerCase() === categoryData.name.toLowerCase();
+      } else { // 'both'
+        const idMatch = cat._id && categoryData._id && cat._id.toString() === categoryData._id.toString();
+        const nameMatch = cat.name && categoryData.name && cat.name.toLowerCase() === categoryData.name.toLowerCase();
+        return idMatch || nameMatch;
+      }
+    });
+  }
+
+  /**
+   * Find a matching category in nested children structures
+   */
+  private findMatchingCategoryInChildren(categoryData: any, rootCategories: any[], matchBy: string): any {
+    for (const root of rootCategories) {
+      if (root.children && Array.isArray(root.children)) {
+        const match = this.findMatchingCategory(categoryData, root.children, matchBy);
+        if (match) return match;
+
+        // Search deeper in nested children
+        const deepMatch = this.findMatchingCategoryInChildren(categoryData, root.children, matchBy);
+        if (deepMatch) return deepMatch;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Export a category tree to JSON format
+   * Useful for creating backups or templates
+   */
+  public async exportCategoryTree(req, res) {
+    console.log("==== START CATEGORY TREE EXPORT ====");
+
+    try {
+      const { rootId, includeIds = true, includeMetadata = true } = req.query;
+
+      let categories;
+
+      if (rootId) {
+        // Export specific root category
+        categories = await this.dbService.find({ query: { _id: rootId } });
+      } else {
+        // Export all root categories
+        categories = await this.dbService.findAll();
+      }
+
+      if (!categories || categories.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: rootId ? `Category with ID ${rootId} not found` : "No categories found"
+        });
+      }
+
+      // Clean up the export data if needed
+      const cleanedCategories = categories.map(cat =>
+        this.cleanCategoryForExport(cat, { includeIds: includeIds === 'true', includeMetadata: includeMetadata === 'true' })
+      );
+
+      console.log(`Exported ${cleanedCategories.length} root categories`);
+      console.log("==== END CATEGORY TREE EXPORT ====");
+
+      return res.status(200).json({
+        success: true,
+        exportDate: new Date().toISOString(),
+        count: cleanedCategories.length,
+        categories: cleanedCategories
+      });
+
+    } catch (error) {
+      console.error("Error in exportCategoryTree:", error);
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred during category export",
+        error: error.message
+      });
+    }
+  }
+
+  /**
+   * Clean a category object for export
+   */
+  private cleanCategoryForExport(category: any, options: { includeIds: boolean, includeMetadata: boolean }): any {
+    const { includeIds, includeMetadata } = options;
+
+    const cleaned: any = {
+      name: category.name
+    };
+
+    if (includeIds) {
+      cleaned._id = category._id;
+      cleaned.createUuid = category.createUuid;
+      cleaned.parent = category.parent;
+    }
+
+    if (includeMetadata) {
+      cleaned.active = category.active;
+      cleaned.isActive = category.isActive;
+      cleaned.createdDate = category.createdDate;
+      cleaned.modifiedDate = category.modifiedDate;
+    }
+
+    // Always include these important fields
+    if (category.aiConfig) {
+      cleaned.aiConfig = category.aiConfig;
+    }
+    if (category.allowedQuestionTypes && category.allowedQuestionTypes.length > 0) {
+      cleaned.allowedQuestionTypes = category.allowedQuestionTypes;
+    }
+    if (category.customFields && category.customFields.length > 0) {
+      cleaned.customFields = category.customFields;
+    }
+
+    // Recursively clean children
+    if (category.children && Array.isArray(category.children) && category.children.length > 0) {
+      cleaned.children = category.children.map(child =>
+        this.cleanCategoryForExport(child, options)
+      );
+    }
+
+    return cleaned;
+  }
+
+  /**
    * Update aiConfig for a category in the deeply nested structure
    * This method properly handles the nested document structure where all categories
    * are stored as children within a single root document
