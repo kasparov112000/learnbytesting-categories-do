@@ -80,6 +80,13 @@ export default function (app, express, serviceobject) {
     serviceobject.createCategory(req, res);
   });
 
+  // Find a category anywhere in the tree by ID (includes nested categories)
+  router.get(`${baseUrl}/find/:id`, (req, res) => {
+    console.log("ROUTE HIT: GET /categories/find/:id");
+    console.log("Category ID:", req.params.id);
+    serviceobject.findCategoryInTree(req, res);
+  });
+
   // Get category with resolved (inherited) aiConfig
   router.get(`${baseUrl}/:id/ai-config`, (req, res) => {
     console.log("ROUTE HIT: GET /categories/:id/ai-config");
@@ -138,7 +145,9 @@ export default function (app, express, serviceobject) {
       });
     }
 
-    serviceobject.put(req, res);
+    // Use updateCategoryById which handles nested category traversal
+    // This allows updating categories at any nesting level, not just root
+    serviceobject.updateCategoryById(req, res);
   });
 
   router.delete(`${baseUrl}/:id`, (req, res) => {

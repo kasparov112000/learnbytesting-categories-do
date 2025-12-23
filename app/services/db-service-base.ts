@@ -121,22 +121,39 @@ export abstract class DbServiceBase {
 
         const id = updateRequest.params.id;
         console.log('DEBUG: Attempting to update document with id:', id);
-        
-        // For categories collection, we need to handle ObjectId conversion
-        let searchId = id;
-        
-        // Check if this is the categories collection and if the ID is a valid ObjectId format
-        if (this.dbModel.collection.name === 'categories' && /^[0-9a-fA-F]{24}$/.test(id)) {
-            searchId = new Types.ObjectId(id);
-            console.log('DEBUG: Converting to ObjectId for categories collection');
+
+        // For categories collection, we need to handle both string (UUID) and ObjectId _id fields
+        let searchId: any = id;
+
+        if (this.dbModel.collection.name === 'categories') {
+            // Try to find by string ID first (handles UUIDs and string ObjectIds)
+            let doc = await this.dbModel.findOne({ _id: id }).exec();
+
+            if (doc) {
+                console.log('DEBUG: Found with string ID');
+                searchId = id;
+            } else if (/^[0-9a-fA-F]{24}$/.test(id)) {
+                // If it's a valid ObjectId format, try as ObjectId
+                const objectIdSearch = new Types.ObjectId(id);
+                console.log('DEBUG: String not found, trying ObjectId for categories collection');
+                doc = await this.dbModel.findOne({ _id: objectIdSearch }).exec();
+                if (doc) {
+                    console.log('DEBUG: Found with ObjectId');
+                    searchId = objectIdSearch;
+                }
+            }
+
+            if (!doc) {
+                console.log('DEBUG: Document not found with either string or ObjectId');
+            }
         }
-        
-        // First, let's try to find the document to debug
-        const doc = await this.dbModel.findOne({ _id: searchId }).exec();
-        console.log('DEBUG: Found document before update:', !!doc);
-        if (doc) {
-            console.log('DEBUG: Document _id type:', typeof doc._id);
-            console.log('DEBUG: Document _id value:', doc._id);
+
+        // Final check - verify document exists before update
+        const finalDoc = await this.dbModel.findOne({ _id: searchId }).exec();
+        console.log('DEBUG: Found document before update:', !!finalDoc);
+        if (finalDoc) {
+            console.log('DEBUG: Document _id type:', typeof finalDoc._id);
+            console.log('DEBUG: Document _id value:', finalDoc._id);
         }
 
         // Remove _id from update body to prevent immutable field error

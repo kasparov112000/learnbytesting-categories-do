@@ -108,32 +108,40 @@ export class CategoryService extends DbMicroServiceBase {
   public async createCategory(req, res) {
     console.log("========== CATEGORY CREATE REQUEST ==========");
     console.log("Timestamp:", new Date().toISOString());
-    console.log("Request Headers:", JSON.stringify(req.headers, null, 2));
     console.log("Request Body:", JSON.stringify(req.body, null, 2));
-    console.log("Request Params:", JSON.stringify(req.params, null, 2));
-    console.log("Request Query:", JSON.stringify(req.query, null, 2));
-    
+
     try {
-      // Log before calling base post method
-      console.log("Calling base class post method...");
-      
-      // Use the base class post method which handles creation
-      const result = await this.post(req, res);
-      
-      console.log("Post method completed");
-      console.log("Result:", result);
-      console.log("========== END CATEGORY CREATE ==========");
-      
-      return result;
+      const categoryData = req.body;
+
+      // If there's a parent, use the nested category creation logic
+      if (categoryData.parent) {
+        console.log("Creating subcategory with parent:", categoryData.parent);
+        const newCategory = await this.createNewCategory(categoryData);
+        console.log("Subcategory created successfully:", newCategory.name);
+
+        // Return all categories after creation
+        const allCategories = await this.dbService.findAll();
+        console.log("========== END CATEGORY CREATE ==========");
+        return res.status(200).json({
+          success: true,
+          result: allCategories,
+          count: allCategories.length
+        });
+      } else {
+        // For root categories, use the base class post method
+        console.log("Creating root category...");
+        const result = await this.post(req, res);
+        console.log("========== END CATEGORY CREATE ==========");
+        return result;
+      }
     } catch (error) {
       console.error("========== CATEGORY CREATE ERROR ==========");
       console.error("Error Type:", error.name);
       console.error("Error Message:", error.message);
       console.error("Error Stack:", error.stack);
-      console.error("Full Error Object:", error);
       console.error("========== END CATEGORY CREATE ERROR ==========");
-      
-      return res.status(500).json({ 
+
+      return res.status(500).json({
         error: "Failed to create category",
         message: error.message,
         details: error.toString()
@@ -578,14 +586,14 @@ export class CategoryService extends DbMicroServiceBase {
         parent: categoryData.parent,
         createUuid: categoryData.createUuid
     });
-    
+
     const newCategory = new Category();
-    
-    // Set basic properties
-    newCategory._id = categoryData._id || generateUuid();
+
+    // Set basic properties - use MongoDB ObjectId for _id, not UUID
+    newCategory._id = categoryData._id || new ObjectId().toString();
     newCategory.name = categoryData.name;
     newCategory.active = categoryData.active ?? true;
-    newCategory.createUuid = categoryData.createUuid;
+    newCategory.createUuid = categoryData.createUuid || generateUuid();  // UUID for tracking
     newCategory.parent = categoryData.parent;
     newCategory.createdDate = new Date();
     newCategory.createCreatedDate = categoryData.createCreatedDate || new Date();
@@ -599,25 +607,50 @@ export class CategoryService extends DbMicroServiceBase {
         active: newCategory.active
     });
 
-    // If there's a parent ID, find and update the parent document
+    // If there's a parent ID, find and update the parent in the nested structure
     if (categoryData.parent) {
         console.log("Finding parent category with ID:", categoryData.parent);
-        const parentCategory = await this.dbService.find({
-            query: { _id: categoryData.parent }
-        });
 
-        console.log("Parent category search result:", {
-            found: parentCategory && parentCategory.length > 0,
-            parentData: parentCategory && parentCategory.length > 0 ? {
-                _id: parentCategory[0]._id,
-                name: parentCategory[0].name,
-                childrenCount: parentCategory[0].children?.length || 0
-            } : null
-        });
+        // Get all root categories to search the entire tree
+        const allRootCategories = await this.dbService.findAll();
+        console.log(`Searching ${allRootCategories.length} root categories for parent`);
 
-        if (parentCategory && parentCategory.length > 0) {
-            const parent = parentCategory[0];
-            console.log("Found parent category:", parent.name);
+        // Helper function to find parent in nested structure
+        const findParentInTree = (categories: any[], targetId: string): { parent: any, root: any } | null => {
+            for (const rootCat of categories) {
+                // Check if root is the parent
+                if (rootCat._id && rootCat._id.toString() === targetId.toString()) {
+                    return { parent: rootCat, root: rootCat };
+                }
+
+                // Recursive search in children
+                const searchChildren = (children: any[], root: any): { parent: any, root: any } | null => {
+                    if (!children || !Array.isArray(children)) return null;
+                    for (const child of children) {
+                        if (child._id && child._id.toString() === targetId.toString()) {
+                            return { parent: child, root: root };
+                        }
+                        if (child.children) {
+                            const result = searchChildren(child.children, root);
+                            if (result) return result;
+                        }
+                    }
+                    return null;
+                };
+
+                if (rootCat.children) {
+                    const result = searchChildren(rootCat.children, rootCat);
+                    if (result) return result;
+                }
+            }
+            return null;
+        };
+
+        const searchResult = findParentInTree(allRootCategories, categoryData.parent);
+
+        if (searchResult) {
+            const { parent, root } = searchResult;
+            console.log("Found parent category:", parent.name, "in root:", root.name);
 
             // Initialize children array if it doesn't exist
             if (!Array.isArray(parent.children)) {
@@ -626,8 +659,9 @@ export class CategoryService extends DbMicroServiceBase {
             }
 
             // Check if child already exists
-            const existingChildIndex = parent.children.findIndex(child => 
-                child._id === newCategory._id || child.createUuid === newCategory.createUuid
+            const existingChildIndex = parent.children.findIndex(child =>
+                (child._id && child._id.toString() === newCategory._id.toString()) ||
+                (child.createUuid && child.createUuid === newCategory.createUuid)
             );
 
             if (existingChildIndex !== -1) {
@@ -638,28 +672,28 @@ export class CategoryService extends DbMicroServiceBase {
                 parent.children.push(newCategory);
             }
 
-            // Update the parent document with the new/updated child
-            console.log("Updating parent document. Parent state:", {
-                _id: parent._id,
-                name: parent.name,
-                childrenCount: parent.children.length,
-                lastAddedChild: parent.children[parent.children.length - 1].name
+            // Update the ROOT document (since nested docs are embedded)
+            console.log("Updating root document:", {
+                _id: root._id,
+                name: root.name,
+                parentName: parent.name,
+                newChildName: newCategory.name
             });
 
             try {
                 await this.dbService.update({
-                    params: { id: parent._id },
-                    body: parent
+                    params: { id: root._id },
+                    body: root
                 });
-                console.log("Successfully updated parent document");
+                console.log("Successfully updated root document with new nested child");
             } catch (error) {
-                console.error("Error updating parent document:", error);
+                console.error("Error updating root document:", error);
                 throw error;
             }
 
             return newCategory;
         } else {
-            console.error("Parent category not found:", categoryData.parent);
+            console.error("Parent category not found in any tree:", categoryData.parent);
             throw new Error(`Parent category not found: ${categoryData.parent}`);
         }
     } else {
@@ -678,7 +712,7 @@ export class CategoryService extends DbMicroServiceBase {
     return newCategory;
   }
 
-  // Helper method to find a category by ID
+  // Helper method to find a category by ID (only searches root-level documents)
   private async findCategoryById(categoryId: string): Promise<Category | null> {
     try {
         const result = await this.dbService.find({
@@ -688,6 +722,118 @@ export class CategoryService extends DbMicroServiceBase {
     } catch (error) {
         console.error('Error finding category by ID:', error);
         return null;
+    }
+  }
+
+  /**
+   * Find a category anywhere in the tree by ID (includes nested categories)
+   * Returns the category if found, null otherwise
+   */
+  public async findCategoryInTree(req, res) {
+    const categoryId = req.params.id;
+
+    console.log("==== START FIND CATEGORY IN TREE ====");
+    console.log("Looking for category ID:", categoryId);
+
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Category ID is required"
+      });
+    }
+
+    try {
+      // Import CategoryModel
+      const { CategoryModel } = require('../models/category.model');
+
+      // Get all root categories
+      const allRootCategories = await CategoryModel.find({}).lean();
+      console.log(`Searching ${allRootCategories.length} root categories`);
+
+      // Helper to recursively search for a category
+      const findInTree = (categories: any[], parentPath: string[] = []): { category: any, path: string[], rootId: string } | null => {
+        for (const cat of categories) {
+          const currentPath = [...parentPath, cat.name];
+
+          if (cat._id && cat._id.toString() === categoryId.toString()) {
+            return {
+              category: cat,
+              path: currentPath,
+              rootId: parentPath.length === 0 ? cat._id.toString() : categories[0]?._id?.toString()
+            };
+          }
+
+          if (cat.children && cat.children.length > 0) {
+            const result = findInTree(cat.children, currentPath);
+            if (result) {
+              // Inherit the rootId from the actual root
+              if (parentPath.length === 0) {
+                result.rootId = cat._id.toString();
+              }
+              return result;
+            }
+          }
+        }
+        return null;
+      };
+
+      let foundCategory = null;
+      let rootId = null;
+
+      for (const rootCategory of allRootCategories) {
+        // Check if root itself is the target
+        if (rootCategory._id.toString() === categoryId.toString()) {
+          foundCategory = {
+            category: rootCategory,
+            path: [rootCategory.name],
+            rootId: rootCategory._id.toString(),
+            isRoot: true
+          };
+          break;
+        }
+
+        // Search in children
+        if (rootCategory.children && rootCategory.children.length > 0) {
+          const result = findInTree(rootCategory.children, [rootCategory.name]);
+          if (result) {
+            foundCategory = {
+              ...result,
+              rootId: rootCategory._id.toString(),
+              isRoot: false
+            };
+            break;
+          }
+        }
+      }
+
+      if (!foundCategory) {
+        console.log(`Category with ID ${categoryId} not found`);
+        return res.status(404).json({
+          success: false,
+          message: `Category with ID ${categoryId} not found`
+        });
+      }
+
+      console.log(`Found category: ${foundCategory.category.name}`);
+      console.log(`Path: ${foundCategory.path.join(' > ')}`);
+      console.log("==== END FIND CATEGORY IN TREE ====");
+
+      return res.status(200).json({
+        success: true,
+        category: foundCategory.category,
+        path: foundCategory.path,
+        breadcrumb: foundCategory.path.join(' > '),
+        rootId: foundCategory.rootId,
+        isRoot: foundCategory.isRoot
+      });
+
+    } catch (error) {
+      console.error("Error finding category in tree:", error);
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while finding category",
+        error: error.message
+      });
     }
   }
 
@@ -731,11 +877,11 @@ export class CategoryService extends DbMicroServiceBase {
           updatedChild.createCreatedDate = existingChild.createCreatedDate;
           updatedChild.createUuid = existingChild.createUuid;
         } else {
-          // Generate new ID for new child
-          updatedChild._id = newChild._id || generateUuid();
+          // Generate new ID for new child - use MongoDB ObjectId, not UUID
+          updatedChild._id = newChild._id || new ObjectId().toString();
           updatedChild.createdDate = new Date();
           updatedChild.createCreatedDate = newChild.createCreatedDate;
-          updatedChild.createUuid = newChild.createUuid;
+          updatedChild.createUuid = newChild.createUuid || generateUuid();  // UUID for tracking
         }
 
         // Update child properties
@@ -1931,12 +2077,13 @@ export class CategoryService extends DbMicroServiceBase {
     const { preserveIds } = options;
 
     const category: any = {
-      _id: preserveIds && categoryData._id ? categoryData._id : generateUuid(),
+      // Use MongoDB ObjectId for _id, not UUID
+      _id: preserveIds && categoryData._id ? categoryData._id : new ObjectId().toString(),
       name: categoryData.name,
       active: categoryData.active !== undefined ? categoryData.active : true,
       isActive: categoryData.isActive !== undefined ? categoryData.isActive : true,
       parent: parentId,
-      createUuid: categoryData.createUuid || generateUuid(),
+      createUuid: categoryData.createUuid || generateUuid(),  // UUID for tracking
       createdDate: categoryData.createdDate || now,
       createCreatedDate: categoryData.createCreatedDate || now,
       modifiedDate: now,
@@ -1988,14 +2135,14 @@ export class CategoryService extends DbMicroServiceBase {
       ? this.findMatchingCategoryInChildren(categoryData, existingCategories, matchBy)
       : this.findMatchingCategory(categoryData, existingCategories, matchBy);
 
-    // Build the category object
+    // Build the category object - use MongoDB ObjectId for _id, not UUID
     const category: any = {
-      _id: preserveIds && categoryData._id ? categoryData._id : (existing?._id || generateUuid()),
+      _id: preserveIds && categoryData._id ? categoryData._id : (existing?._id || new ObjectId().toString()),
       name: categoryData.name,
       active: categoryData.active !== undefined ? categoryData.active : true,
       isActive: categoryData.isActive !== undefined ? categoryData.isActive : true,
       parent: parentId,
-      createUuid: categoryData.createUuid || generateUuid(),
+      createUuid: categoryData.createUuid || generateUuid(),  // UUID for tracking
       createdDate: existing?.createdDate || categoryData.createdDate || now,
       createCreatedDate: existing?.createCreatedDate || categoryData.createCreatedDate || now,
       modifiedDate: now,
@@ -2173,6 +2320,180 @@ export class CategoryService extends DbMicroServiceBase {
     }
 
     return cleaned;
+  }
+
+  /**
+   * Update a category by ID, handling the deeply nested document structure
+   * This method can find and update categories at any nesting level
+   * @param req Request with params.id and body containing the update data
+   * @param res Response object
+   */
+  public async updateCategoryById(req, res) {
+    console.log("==== START UPDATE CATEGORY BY ID ====");
+
+    const categoryId = req.params.id;
+    const updateData = req.body;
+
+    console.log("Update category request:", {
+      categoryId,
+      updateDataKeys: Object.keys(updateData),
+      updateDataName: updateData.name
+    });
+
+    if (!categoryId) {
+      return res.status(400).json({
+        success: false,
+        message: "Category ID is required"
+      });
+    }
+
+    try {
+      // Import CategoryModel
+      const { CategoryModel } = require('../models/category.model');
+
+      // Get all root categories (actual MongoDB documents)
+      const allRootCategories = await CategoryModel.find({}).lean();
+      console.log(`Found ${allRootCategories.length} root categories`);
+
+      // Find which root category contains the target (could be root itself or nested)
+      let targetRootId = null;
+      let isTargetAtRoot = false;
+      let updatedRootDoc = null;
+
+      for (const rootCategory of allRootCategories) {
+        const rootIdStr = rootCategory._id.toString();
+
+        // Check if the root category itself is the target
+        if (rootIdStr === categoryId.toString()) {
+          console.log(`Found target at root level: ${rootCategory.name} (${rootIdStr})`);
+          targetRootId = rootIdStr;
+          isTargetAtRoot = true;
+          break;
+        }
+
+        // Search recursively in children
+        const findInChildren = (children: any[]): boolean => {
+          if (!children || !Array.isArray(children)) return false;
+          for (const child of children) {
+            if (child._id && child._id.toString() === categoryId.toString()) {
+              return true;
+            }
+            if (child.children && findInChildren(child.children)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        if (rootCategory.children && findInChildren(rootCategory.children)) {
+          console.log(`Found target nested in root: ${rootCategory.name} (${rootIdStr})`);
+          targetRootId = rootIdStr;
+          updatedRootDoc = rootCategory;
+          break;
+        }
+      }
+
+      if (!targetRootId) {
+        console.error(`Category with ID ${categoryId} not found in any root category`);
+        return res.status(404).json({
+          success: false,
+          message: `Category with ID ${categoryId} not found`
+        });
+      }
+
+      console.log(`Target root ID: ${targetRootId}, isTargetAtRoot: ${isTargetAtRoot}`);
+
+      let updateResult;
+
+      if (isTargetAtRoot) {
+        // Direct update to root document using $set
+        console.log("Updating root document directly with $set");
+
+        // Remove _id from update data to prevent immutable field error
+        const { _id, ...updateFields } = updateData;
+        updateFields.modifiedDate = new Date();
+
+        updateResult = await CategoryModel.findByIdAndUpdate(
+          targetRootId,
+          { $set: updateFields },
+          { new: true }
+        );
+      } else {
+        // For nested categories, update the nested object and save the entire children array
+        const updateInChildren = (children: any[]): boolean => {
+          if (!children || !Array.isArray(children)) return false;
+          for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (child._id && child._id.toString() === categoryId.toString()) {
+              // Preserve the original _id and parent
+              const originalId = child._id;
+              const originalParent = child.parent;
+              const originalCreatedDate = child.createdDate;
+              const originalCreateCreatedDate = child.createCreatedDate;
+              const originalCreateUuid = child.createUuid;
+
+              // Merge the update data with existing child
+              Object.assign(child, updateData);
+
+              // Restore immutable fields
+              child._id = originalId;
+              child.parent = originalParent;
+              child.createdDate = originalCreatedDate;
+              child.createCreatedDate = originalCreateCreatedDate;
+              child.createUuid = originalCreateUuid;
+              child.modifiedDate = new Date();
+
+              console.log(`Updated nested category in memory: ${child.name}`);
+              return true;
+            }
+            if (child.children && updateInChildren(child.children)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        updateInChildren(updatedRootDoc.children);
+
+        // Save the root document with updated children
+        console.log("Saving root document with updated nested category");
+        updateResult = await CategoryModel.findByIdAndUpdate(
+          targetRootId,
+          {
+            $set: {
+              children: updatedRootDoc.children,
+              modifiedDate: new Date()
+            }
+          },
+          { new: true }
+        );
+      }
+
+      if (!updateResult) {
+        console.error(`Failed to update category - findByIdAndUpdate returned null`);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to update category in database"
+        });
+      }
+
+      console.log("Category updated successfully");
+      console.log("==== END UPDATE CATEGORY BY ID - SUCCESS ====");
+      return res.status(200).json({
+        success: true,
+        message: "Category updated successfully",
+        result: updateResult
+      });
+
+    } catch (error) {
+      console.error("Error updating category by ID:", error);
+      console.log("==== END UPDATE CATEGORY BY ID - ERROR ====");
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while updating category",
+        error: error.message
+      });
+    }
   }
 
   /**
