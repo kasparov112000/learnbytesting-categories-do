@@ -2413,8 +2413,9 @@ export class CategoryService extends DbMicroServiceBase {
         const { _id, ...updateFields } = updateData;
         updateFields.modifiedDate = new Date();
 
-        updateResult = await CategoryModel.findByIdAndUpdate(
-          targetRootId,
+        // Use findOneAndUpdate instead of findByIdAndUpdate for UUID support
+        updateResult = await CategoryModel.findOneAndUpdate(
+          { _id: targetRootId },
           { $set: updateFields },
           { new: true }
         );
@@ -2456,9 +2457,10 @@ export class CategoryService extends DbMicroServiceBase {
         updateInChildren(updatedRootDoc.children);
 
         // Save the root document with updated children
+        // Use findOneAndUpdate instead of findByIdAndUpdate for UUID support
         console.log("Saving root document with updated nested category");
-        updateResult = await CategoryModel.findByIdAndUpdate(
-          targetRootId,
+        updateResult = await CategoryModel.findOneAndUpdate(
+          { _id: targetRootId },
           {
             $set: {
               children: updatedRootDoc.children,
@@ -2579,9 +2581,10 @@ export class CategoryService extends DbMicroServiceBase {
 
       if (isTargetAtRoot) {
         // Direct update to root document using $set
+        // Use findOneAndUpdate instead of findByIdAndUpdate for UUID support
         console.log("Updating root document directly with $set");
-        updateResult = await CategoryModel.findByIdAndUpdate(
-          targetRootId,
+        updateResult = await CategoryModel.findOneAndUpdate(
+          { _id: targetRootId },
           {
             $set: {
               aiConfig: aiConfig,
@@ -2611,9 +2614,10 @@ export class CategoryService extends DbMicroServiceBase {
         updateInChildren(updatedRootDoc.children);
 
         // Save the root document with updated children
+        // Use findOneAndUpdate instead of findByIdAndUpdate for UUID support
         console.log("Saving root document with updated nested category");
-        updateResult = await CategoryModel.findByIdAndUpdate(
-          targetRootId,
+        updateResult = await CategoryModel.findOneAndUpdate(
+          { _id: targetRootId },
           {
             $set: {
               children: updatedRootDoc.children,
