@@ -42,14 +42,15 @@ app.use(morgan(function (tokens, req, res) {
   ].join(' ');
 }));
 
-function databaseConnect() {
+async function databaseConnect(): Promise<void> {
   console.log('info', 'Attempting to connect to database');
-  dbService.connect()
-    .then(connectionInfo => {
-      console.log('info', `Successfully connected to database!  Connection Info: ${connectionInfo}`);
-    }, err => {
-      console.log('error', `Unable to connect to database : ${err}`);
-    });
+  try {
+    const connectionInfo = await dbService.connect();
+    console.log('info', `Successfully connected to database!  Connection Info: ${connectionInfo}`);
+  } catch (err) {
+    console.log('error', `Unable to connect to database : ${err}`);
+    throw err; // Re-throw to prevent server from accepting requests without DB
+  }
 }
 
 function bindServices() {
@@ -68,18 +69,29 @@ console.log('info', `You can view your swagger documentation at <host>:${service
 // expose static swagger docs
 app.use(express.static('./docs'));
 // Start Server: Main point of entry
-app.listen(serviceConfigs.port, () => {
-  bindServices();
-  // Binding the routes file with the service file and
-  // registering the routes.
-  routeBinder(app, express, service);
-  console.log('info', `Service listening on port ${serviceConfigs.port} in ${serviceConfigs.envName}`, {
-    timestamp: Date.now()
-  });
+// Connect to database FIRST, then start accepting requests
+async function startServer() {
+  try {
+    // Connect to database first
+    await databaseConnect();
 
-  // Connect to database
-  databaseConnect();
-});
+    // Now bind services and routes
+    bindServices();
+    routeBinder(app, express, service);
+
+    // Start listening only after DB is connected
+    app.listen(serviceConfigs.port, () => {
+      console.log('info', `Service listening on port ${serviceConfigs.port} in ${serviceConfigs.envName}`, {
+        timestamp: Date.now()
+      });
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 process.on('SIGINT', async () => {
   console.log('info', 'exit process');
