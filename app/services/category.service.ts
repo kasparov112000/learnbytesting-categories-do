@@ -2366,7 +2366,7 @@ export class CategoryService extends DbMicroServiceBase {
         // Check if the root category itself is the target
         if (rootIdStr === categoryId.toString()) {
           console.log(`Found target at root level: ${rootCategory.name} (${rootIdStr})`);
-          targetRootId = rootIdStr;
+          targetRootId = rootCategory._id; // Preserve original _id type for query
           isTargetAtRoot = true;
           break;
         }
@@ -2387,7 +2387,7 @@ export class CategoryService extends DbMicroServiceBase {
 
         if (rootCategory.children && findInChildren(rootCategory.children)) {
           console.log(`Found target nested in root: ${rootCategory.name} (${rootIdStr})`);
-          targetRootId = rootIdStr;
+          targetRootId = rootCategory._id; // Preserve original _id type for query
           updatedRootDoc = rootCategory;
           break;
         }
@@ -2472,7 +2472,7 @@ export class CategoryService extends DbMicroServiceBase {
       }
 
       if (!updateResult) {
-        console.error(`Failed to update category - findByIdAndUpdate returned null`);
+        console.error(`Failed to update category - findOneAndUpdate returned null for targetRootId: ${targetRootId}`);
         return res.status(500).json({
           success: false,
           message: "Failed to update category in database"
@@ -2540,7 +2540,7 @@ export class CategoryService extends DbMicroServiceBase {
         // Check if the root category itself is the target
         if (rootIdStr === categoryId.toString()) {
           console.log(`Found target at root level: ${rootCategory.name} (${rootIdStr})`);
-          targetRootId = rootIdStr;
+          targetRootId = rootCategory._id; // Preserve original _id type for query
           isTargetAtRoot = true;
           break;
         }
@@ -2561,7 +2561,7 @@ export class CategoryService extends DbMicroServiceBase {
 
         if (rootCategory.children && findInChildren(rootCategory.children)) {
           console.log(`Found target nested in root: ${rootCategory.name} (${rootIdStr})`);
-          targetRootId = rootIdStr;
+          targetRootId = rootCategory._id; // Preserve original _id type for query
           updatedRootDoc = rootCategory;
           break;
         }
@@ -2629,7 +2629,7 @@ export class CategoryService extends DbMicroServiceBase {
       }
 
       if (!updateResult) {
-        console.error(`Failed to update category - findByIdAndUpdate returned null`);
+        console.error(`Failed to update category - findOneAndUpdate returned null for targetRootId: ${targetRootId}`);
         return res.status(500).json({
           success: false,
           message: "Failed to update category in database"
