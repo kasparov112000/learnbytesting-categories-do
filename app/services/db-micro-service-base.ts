@@ -324,6 +324,13 @@ public async getSubCategory2Data(mainCategory: string, categoryName: string, isA
 
     protected onPrePost(model): void {
         const user = model.user && model.user.authenticatedInfo ? model.user.authenticatedInfo.guid : 'SYSTEM';
+
+        // Generate _id if not provided (required for CategoryModel with custom _id field)
+        if (!model._id) {
+            model._id = new ObjectId().toString();
+            console.log('[onPrePost] Generated new _id:', model._id);
+        }
+
         model.createdByGuid = user;
         model.createdDate = new Date();
         model.modifiedDate = new Date();
