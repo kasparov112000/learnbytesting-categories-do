@@ -21,9 +21,10 @@ let service: CategoryService;
 dotenv.config();
 
 app.use(bodyParser.urlencoded({
-  extended: true
+  extended: true,
+  limit: '10mb'
 }));
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 
 app.use(helmet());
 
