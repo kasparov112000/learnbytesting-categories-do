@@ -117,6 +117,14 @@ export default function (app, express, serviceobject) {
     serviceobject.exportCategoryTree(req, res);
   });
 
+  // Ensure subcategory exists (idempotent - creates if not exists, returns existing if it does)
+  // Used by n8n workflows to dynamically create categories suggested by LLM
+  router.post(`${baseUrl}/ensure-subcategory`, (req, res) => {
+    console.log("ROUTE HIT: POST /categories/ensure-subcategory");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    serviceobject.ensureSubcategory(req, res);
+  });
+
   // Less specific routes should come after
   router.post(`${baseUrl}/:id`, (req, res) => {
     serviceobject.getByLineOfService(req, res);

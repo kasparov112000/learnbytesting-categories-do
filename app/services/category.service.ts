@@ -2653,4 +2653,211 @@ export class CategoryService extends DbMicroServiceBase {
       });
     }
   }
+
+  /**
+   * Ensure a subcategory exists under a parent category.
+   * If it exists, returns the existing category.
+   * If not, creates it and returns the new category.
+   * This is an idempotent operation.
+   *
+   * @param req Request with body containing:
+   *   - parentId: ID of the root/parent category
+   *   - name: Name of the subcategory to ensure
+   *   - description: Optional description
+   *   - createUnderChild: Optional - name of existing child to nest under
+   * @param res Response object
+   */
+  public async ensureSubcategory(req, res) {
+    console.log("==== START ENSURE SUBCATEGORY ====");
+
+    const { parentId, name, description, createUnderChild } = req.body;
+
+    console.log("Ensure subcategory request:", {
+      parentId,
+      name,
+      description,
+      createUnderChild
+    });
+
+    if (!parentId || !name) {
+      return res.status(400).json({
+        success: false,
+        message: "parentId and name are required"
+      });
+    }
+
+    try {
+      const { CategoryModel } = require('../models/category.model');
+
+      // Find the parent category
+      const parentCategory = await CategoryModel.findOne({ _id: parentId }).lean();
+
+      if (!parentCategory) {
+        return res.status(404).json({
+          success: false,
+          message: `Parent category with ID ${parentId} not found`
+        });
+      }
+
+      console.log(`Found parent category: ${parentCategory.name}`);
+
+      // Helper to search for category by name in children
+      const findByNameInChildren = (children: any[], searchName: string): any => {
+        if (!children || !Array.isArray(children)) return null;
+        for (const child of children) {
+          if (child.name && child.name.toLowerCase() === searchName.toLowerCase()) {
+            return child;
+          }
+          if (child.children) {
+            const found = findByNameInChildren(child.children, searchName);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      // Helper to build ancestry chain
+      const buildAncestry = (rootCat: any, targetId: string, path: any[] = []): any[] | null => {
+        path.push({ _id: rootCat._id, name: rootCat.name });
+
+        if (rootCat._id.toString() === targetId.toString()) {
+          return path;
+        }
+
+        if (rootCat.children && Array.isArray(rootCat.children)) {
+          for (const child of rootCat.children) {
+            const result = buildAncestry(child, targetId, [...path]);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+
+      // Check if subcategory already exists
+      let existingSubcategory = findByNameInChildren(parentCategory.children || [], name);
+
+      if (existingSubcategory) {
+        console.log(`Subcategory "${name}" already exists with ID: ${existingSubcategory._id}`);
+
+        const ancestry = buildAncestry(parentCategory, existingSubcategory._id.toString());
+
+        return res.status(200).json({
+          success: true,
+          created: false,
+          message: `Subcategory "${name}" already exists`,
+          category: existingSubcategory,
+          ancestry: ancestry || [{ _id: parentCategory._id, name: parentCategory.name }]
+        });
+      }
+
+      // Determine where to create the new subcategory
+      let targetParent = parentCategory;
+      let targetParentId = parentId;
+      let ancestryPrefix = [{ _id: parentCategory._id, name: parentCategory.name }];
+
+      if (createUnderChild) {
+        // Find the specified child to nest under
+        const childParent = findByNameInChildren(parentCategory.children || [], createUnderChild);
+        if (childParent) {
+          targetParent = childParent;
+          targetParentId = childParent._id;
+          ancestryPrefix = buildAncestry(parentCategory, childParent._id.toString()) || ancestryPrefix;
+          console.log(`Will create under child: ${createUnderChild}`);
+        } else {
+          console.log(`Child "${createUnderChild}" not found, creating at root level`);
+        }
+      }
+
+      // Create new subcategory
+      const now = new Date();
+      const newSubcategory = {
+        _id: new ObjectId().toString(),
+        name: name,
+        description: description || '',
+        active: true,
+        isActive: true,
+        parent: targetParentId,
+        createUuid: generateUuid(),
+        createdDate: now,
+        createCreatedDate: now,
+        modifiedDate: now,
+        children: []
+      };
+
+      console.log(`Creating new subcategory: ${name} under ${targetParent.name}`);
+
+      // Update the parent category with the new child
+      // We need to find and update the correct location in the tree
+
+      const addChildToParent = (children: any[], parentId: string, newChild: any): boolean => {
+        for (let i = 0; i < children.length; i++) {
+          if (children[i]._id && children[i]._id.toString() === parentId.toString()) {
+            if (!children[i].children) {
+              children[i].children = [];
+            }
+            children[i].children.push(newChild);
+            return true;
+          }
+          if (children[i].children && addChildToParent(children[i].children, parentId, newChild)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      let updateQuery;
+      if (targetParentId === parentId) {
+        // Adding directly to root category's children
+        updateQuery = {
+          $push: { children: newSubcategory },
+          $set: { modifiedDate: now }
+        };
+      } else {
+        // Adding to nested child - need to update the whole tree
+        const updatedChildren = [...(parentCategory.children || [])];
+        addChildToParent(updatedChildren, targetParentId, newSubcategory);
+        updateQuery = {
+          $set: {
+            children: updatedChildren,
+            modifiedDate: now
+          }
+        };
+      }
+
+      const updateResult = await CategoryModel.findOneAndUpdate(
+        { _id: parentId },
+        updateQuery,
+        { new: true }
+      );
+
+      if (!updateResult) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to create subcategory"
+        });
+      }
+
+      const ancestry = [...ancestryPrefix, { _id: newSubcategory._id, name: newSubcategory.name }];
+
+      console.log(`Created subcategory "${name}" successfully`);
+      console.log("==== END ENSURE SUBCATEGORY - SUCCESS ====");
+
+      return res.status(201).json({
+        success: true,
+        created: true,
+        message: `Subcategory "${name}" created successfully`,
+        category: newSubcategory,
+        ancestry: ancestry
+      });
+
+    } catch (error) {
+      console.error("Error in ensureSubcategory:", error);
+      console.log("==== END ENSURE SUBCATEGORY - ERROR ====");
+      return res.status(500).json({
+        success: false,
+        message: "An error occurred while ensuring subcategory",
+        error: error.message
+      });
+    }
+  }
 }
