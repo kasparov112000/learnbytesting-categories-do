@@ -74,6 +74,14 @@ export interface AiConfig {
   inheritToChildren?: boolean;
 }
 
+// Menu item visibility configuration for category-based menu filtering
+export interface MenuItemConfig {
+  key: string;           // Menu item key (e.g., "menu:chessPlay", "/chess-play")
+  displayName: string;   // Human-readable name (e.g., "Chess Play")
+  isEnabled: boolean;    // Whether this menu item is visible for users with this category
+  icon?: string;         // Optional icon name for display
+}
+
 export interface ICategory {
   _id: string;
   name: string;
@@ -87,6 +95,7 @@ export interface ICategory {
   allowedQuestionTypes?: QuestionTypeConfig[];
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
+  visibleMenuItems?: MenuItemConfig[];  // Menu items visible to users with this category
   $getAllSubdocs: () => any[];
   $isDeleted: () => boolean;
   $isSaved: () => boolean;
@@ -162,6 +171,14 @@ const CategorySchema = new Schema<ICategory>(
       },
       inheritToChildren: { type: Boolean, default: true }
     },
+    visibleMenuItems: [
+      {
+        key: { type: String, required: true },
+        displayName: { type: String, required: true },
+        isEnabled: { type: Boolean, default: true },
+        icon: { type: String }
+      }
+    ],
   },
   {
     timestamps: true,
@@ -189,6 +206,7 @@ export class Category implements ICategory {
   allowedQuestionTypes?: QuestionTypeConfig[];
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
+  visibleMenuItems?: MenuItemConfig[];
 
   constructor(data: Partial<ICategory>) {
     this._id = data._id || '';
@@ -203,6 +221,7 @@ export class Category implements ICategory {
     this.allowedQuestionTypes = data.allowedQuestionTypes || [];
     this.customFields = data.customFields || [];
     this.aiConfig = data.aiConfig;
+    this.visibleMenuItems = data.visibleMenuItems || [];
   }
 
   $getAllSubdocs() {
