@@ -19,7 +19,7 @@ const mongoose = require('mongoose');
 const axios = require('axios');
 
 // Configuration
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/learnbytesting';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/mdr-categories';
 const TRANSLATION_API = process.env.TRANSLATION_API || 'http://localhost:3035';
 const TARGET_LANG = 'es';
 const BATCH_SIZE = 50;
