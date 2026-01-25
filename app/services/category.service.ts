@@ -601,11 +601,15 @@ export class CategoryService extends DbMicroServiceBase {
     newCategory.modifiedDate = new Date();
     newCategory.children = [];
 
+    // Translate category name and embed translations
+    await this.translateCategoryOnSave(newCategory);
+
     console.log("Created new category object:", {
         _id: newCategory._id,
         name: newCategory.name,
         parent: newCategory.parent,
-        active: newCategory.active
+        active: newCategory.active,
+        translations: newCategory.translations
     });
 
     // If there's a parent ID, find and update the parent in the nested structure
@@ -2414,6 +2418,11 @@ export class CategoryService extends DbMicroServiceBase {
         const { _id, ...updateFields } = updateData;
         updateFields.modifiedDate = new Date();
 
+        // Translate name if it's being updated
+        if (updateFields.name) {
+          await this.translateCategoryOnSave(updateFields);
+        }
+
         // Use findOneAndUpdate instead of findByIdAndUpdate for UUID support
         updateResult = await CategoryModel.findOneAndUpdate(
           { _id: targetRootId },
@@ -2421,6 +2430,11 @@ export class CategoryService extends DbMicroServiceBase {
           { new: true }
         );
       } else {
+        // Translate name if it's being updated (do this before the sync function)
+        if (updateData.name) {
+          await this.translateCategoryOnSave(updateData);
+        }
+
         // For nested categories, update the nested object and save the entire children array
         const updateInChildren = (children: any[]): boolean => {
           if (!children || !Array.isArray(children)) return false;
@@ -2434,7 +2448,7 @@ export class CategoryService extends DbMicroServiceBase {
               const originalCreateCreatedDate = child.createCreatedDate;
               const originalCreateUuid = child.createUuid;
 
-              // Merge the update data with existing child
+              // Merge the update data with existing child (includes translations if name was updated)
               Object.assign(child, updateData);
 
               // Restore immutable fields
@@ -2868,7 +2882,8 @@ export class CategoryService extends DbMicroServiceBase {
 
   /**
    * Get categories with translated names
-   * Recursively translates category names in the tree structure
+   * Uses embedded translations from the category document
+   * Falls back to API translation for categories without embedded translations
    */
   public async getCategoriesWithTranslation(targetLang: string = 'en'): Promise<any[]> {
     const categories = await this.dbService.findAll();
@@ -2877,76 +2892,125 @@ export class CategoryService extends DbMicroServiceBase {
       return categories;
     }
 
-    // Translate category tree recursively
-    return await this.translateCategoryTree(categories, targetLang);
+    // Use embedded translations, falling back to API for missing ones
+    return await this.translateCategoryTreeWithEmbedded(categories, targetLang);
   }
 
   /**
-   * Recursively translate category names in tree
+   * Translate category tree using embedded translations
+   * Only calls API for categories missing embedded translations
    */
-  private async translateCategoryTree(categories: any[], targetLang: string): Promise<any[]> {
+  private async translateCategoryTreeWithEmbedded(categories: any[], targetLang: string): Promise<any[]> {
     if (!categories || !categories.length) return categories;
 
-    // Collect all category names for batch translation
-    const allNames: { id: string; name: string }[] = [];
-    this.collectCategoryNames(categories, allNames);
+    // Collect categories missing embedded translations
+    const missingTranslations: { id: string; name: string }[] = [];
+    this.collectMissingTranslations(categories, targetLang, missingTranslations);
 
-    if (!allNames.length) return categories;
+    // Batch translate missing ones via API
+    let translationMap = new Map<string, string>();
+    if (missingTranslations.length > 0) {
+      console.log(`[Categories] Translating ${missingTranslations.length} categories via API (missing embedded translations)`);
+      const names = missingTranslations.map(n => n.name);
+      const translatedNames = await translationClient.translateBatch(names, 'en', targetLang);
 
-    // Batch translate all names
-    const names = allNames.map(n => n.name);
-    const translatedNames = await translationClient.translateBatch(names, 'en', targetLang);
+      missingTranslations.forEach((item, idx) => {
+        translationMap.set(item.id, translatedNames[idx]);
+      });
 
-    // Build lookup map
-    const translationMap = new Map<string, string>();
-    allNames.forEach((item, idx) => {
-      translationMap.set(item.id, translatedNames[idx]);
-    });
+      // Optionally persist the translations for future use
+      this.persistMissingTranslations(missingTranslations, translatedNames, targetLang);
+    }
 
-    // Apply translations to tree
-    return this.applyTranslationsToTree(categories, translationMap, targetLang);
+    // Apply translations to tree (embedded + API fallback)
+    return this.applyEmbeddedTranslationsToTree(categories, targetLang, translationMap);
   }
 
   /**
-   * Collect all category names from tree (for batch translation)
+   * Collect categories that don't have embedded translations for target language
    */
-  private collectCategoryNames(categories: any[], result: { id: string; name: string }[]): void {
+  private collectMissingTranslations(
+    categories: any[],
+    targetLang: string,
+    result: { id: string; name: string }[]
+  ): void {
     for (const cat of categories) {
-      if (cat.name) {
-        const catId = cat._id ? cat._id.toString() : (cat.id ? cat.id.toString() : '');
-        if (catId) {
-          result.push({ id: catId, name: cat.name });
-        }
+      const catId = cat._id ? cat._id.toString() : (cat.id ? cat.id.toString() : '');
+
+      // Check if embedded translation exists
+      const hasEmbedded = cat.translations && cat.translations[targetLang];
+
+      if (cat.name && catId && !hasEmbedded) {
+        result.push({ id: catId, name: cat.name });
       }
+
       if (cat.children && cat.children.length) {
-        this.collectCategoryNames(cat.children, result);
+        this.collectMissingTranslations(cat.children, targetLang, result);
       }
     }
   }
 
   /**
-   * Apply translations to category tree
+   * Apply embedded translations to tree, using API fallback map for missing ones
    */
-  private applyTranslationsToTree(categories: any[], translationMap: Map<string, string>, targetLang: string): any[] {
+  private applyEmbeddedTranslationsToTree(
+    categories: any[],
+    targetLang: string,
+    apiTranslationMap: Map<string, string>
+  ): any[] {
     return categories.map(cat => {
       const catObj = cat.toObject ? cat.toObject() : { ...cat };
       const catId = catObj._id ? catObj._id.toString() : (catObj.id ? catObj.id.toString() : '');
-      const translatedName = translationMap.get(catId);
+
+      // Use embedded translation if available, otherwise use API translation
+      const embeddedTranslation = catObj.translations?.[targetLang];
+      const translatedName = embeddedTranslation || apiTranslationMap.get(catId);
 
       if (translatedName) {
         catObj._originalName = catObj.name;
         catObj.name = translatedName;
+        catObj._translationSource = embeddedTranslation ? 'embedded' : 'api';
       }
 
       catObj._translated = true;
       catObj._targetLang = targetLang;
 
       if (catObj.children && catObj.children.length) {
-        catObj.children = this.applyTranslationsToTree(catObj.children, translationMap, targetLang);
+        catObj.children = this.applyEmbeddedTranslationsToTree(catObj.children, targetLang, apiTranslationMap);
       }
 
       return catObj;
     });
+  }
+
+  /**
+   * Persist missing translations back to category documents (fire-and-forget)
+   * This builds up embedded translations over time
+   */
+  private async persistMissingTranslations(
+    items: { id: string; name: string }[],
+    translations: string[],
+    targetLang: string
+  ): Promise<void> {
+    try {
+      const bulkOps = items.map((item, idx) => ({
+        updateOne: {
+          filter: { _id: item.id },
+          update: { $set: { [`translations.${targetLang}`]: translations[idx] } }
+        }
+      }));
+
+      if (bulkOps.length > 0) {
+        // Fire and forget - don't await
+        this.dbService.getModel().bulkWrite(bulkOps).then(() => {
+          console.log(`[Categories] Persisted ${bulkOps.length} translations for lang=${targetLang}`);
+        }).catch(err => {
+          console.warn(`[Categories] Failed to persist translations: ${err.message}`);
+        });
+      }
+    } catch (err) {
+      console.warn(`[Categories] Error preparing bulk translation persist: ${err}`);
+    }
   }
 
   /**
@@ -2965,5 +3029,67 @@ export class CategoryService extends DbMicroServiceBase {
 
     const translatedName = await translationClient.translate(openingName, 'en', targetLang);
     return eco ? `${translatedName} (${eco})` : translatedName;
+  }
+
+  /**
+   * Translate category name on create/update and embed translations
+   * Called automatically when a category is created or its name is updated
+   * Translates to Spanish by default (can be extended for more languages)
+   */
+  public async translateCategoryOnSave(category: any): Promise<any> {
+    if (!category.name) {
+      return category;
+    }
+
+    try {
+      // Translate to Spanish
+      const spanishTranslation = await translationClient.translate(
+        category.name,
+        'en',
+        'es'
+      );
+
+      // Initialize translations object if not present
+      if (!category.translations) {
+        category.translations = {};
+      }
+
+      // Set Spanish translation
+      category.translations.es = spanishTranslation;
+
+      console.log(`[Categories] Translated "${category.name}" → "${spanishTranslation}" (es)`);
+    } catch (err) {
+      console.warn(`[Categories] Failed to translate category "${category.name}": ${err.message}`);
+      // Don't fail the save if translation fails - proceed with just English name
+    }
+
+    return category;
+  }
+
+  /**
+   * Persist translation for a single category (for use after update operations)
+   */
+  public async persistCategoryTranslation(
+    categoryId: string,
+    translations: { es?: string; pt?: string; fr?: string; de?: string }
+  ): Promise<void> {
+    try {
+      const updateFields: any = {};
+      for (const [lang, value] of Object.entries(translations)) {
+        if (value) {
+          updateFields[`translations.${lang}`] = value;
+        }
+      }
+
+      if (Object.keys(updateFields).length > 0) {
+        await this.dbService.getModel().updateOne(
+          { _id: categoryId },
+          { $set: updateFields }
+        );
+        console.log(`[Categories] Persisted translations for category ${categoryId}`);
+      }
+    } catch (err) {
+      console.warn(`[Categories] Failed to persist translation: ${err.message}`);
+    }
   }
 }

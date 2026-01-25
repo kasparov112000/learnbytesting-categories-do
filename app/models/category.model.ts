@@ -82,9 +82,18 @@ export interface MenuItemConfig {
   icon?: string;         // Optional icon name for display
 }
 
+// Embedded translations for multi-language support
+export interface CategoryTranslations {
+  es?: string;  // Spanish
+  pt?: string;  // Portuguese (future)
+  fr?: string;  // French (future)
+  de?: string;  // German (future)
+}
+
 export interface ICategory {
   _id: string;
   name: string;
+  translations?: CategoryTranslations;  // Embedded translations by language code
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -107,6 +116,12 @@ const CategorySchema = new Schema<ICategory>(
   {
     _id: { type: Schema.Types.Mixed }, // Allow both String and ObjectId
     name: { type: String, required: true },
+    translations: {
+      es: { type: String },
+      pt: { type: String },
+      fr: { type: String },
+      de: { type: String }
+    },
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
@@ -196,6 +211,7 @@ export const CategoryModel = model<ICategory>('Categories', CategorySchema);
 export class Category implements ICategory {
   _id: string;
   name: string;
+  translations?: CategoryTranslations;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -211,6 +227,7 @@ export class Category implements ICategory {
   constructor(data: Partial<ICategory>) {
     this._id = data._id || '';
     this.name = data.name || '';
+    this.translations = data.translations;
     this.isActive = data.isActive || false;
     this.createdAt = data.createdAt || new Date();
     this.updatedAt = data.updatedAt || new Date();
