@@ -46,10 +46,13 @@ const Category = mongoose.model('Category', CategorySchema);
 function collectAllNames(categories, result = []) {
   for (const cat of categories) {
     if (cat.name && cat._id) {
+      const existingTranslation = cat.translations && cat.translations[TARGET_LANG];
+      // Consider needing translation if: no translation OR translation equals English name (fallback)
+      const needsTranslation = !existingTranslation || existingTranslation === cat.name;
       result.push({
         id: cat._id.toString(),
         name: cat.name,
-        hasTranslation: !!(cat.translations && cat.translations[TARGET_LANG])
+        hasTranslation: !needsTranslation
       });
     }
     if (cat.children && cat.children.length) {
@@ -66,8 +69,8 @@ async function translateBatch(names) {
   try {
     const response = await axios.post(`${TRANSLATION_API}/translate/batch`, {
       texts: names,
-      source_lang: 'en',
-      target_lang: TARGET_LANG,
+      source: 'en',
+      target: TARGET_LANG,
       use_glossary: true
     });
     return response.data.translations || response.data;
