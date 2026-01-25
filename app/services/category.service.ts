@@ -9,6 +9,7 @@ import { GridFilterSearchHelper } from "../helpers/gridFilterSearchHelper";
 import crypto from "crypto";
 import { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
+import { translationClient } from "./translation.service";
 
 // Helper function for generating UUIDs to ensure consistent behavior
 function generateUuid() {
@@ -2859,5 +2860,110 @@ export class CategoryService extends DbMicroServiceBase {
         error: error.message
       });
     }
+  }
+
+  // =============================================================================
+  // Translation Methods
+  // =============================================================================
+
+  /**
+   * Get categories with translated names
+   * Recursively translates category names in the tree structure
+   */
+  public async getCategoriesWithTranslation(targetLang: string = 'en'): Promise<any[]> {
+    const categories = await this.dbService.findAll();
+
+    if (targetLang === 'en') {
+      return categories;
+    }
+
+    // Translate category tree recursively
+    return await this.translateCategoryTree(categories, targetLang);
+  }
+
+  /**
+   * Recursively translate category names in tree
+   */
+  private async translateCategoryTree(categories: any[], targetLang: string): Promise<any[]> {
+    if (!categories || !categories.length) return categories;
+
+    // Collect all category names for batch translation
+    const allNames: { id: string; name: string }[] = [];
+    this.collectCategoryNames(categories, allNames);
+
+    if (!allNames.length) return categories;
+
+    // Batch translate all names
+    const names = allNames.map(n => n.name);
+    const translatedNames = await translationClient.translateBatch(names, 'en', targetLang);
+
+    // Build lookup map
+    const translationMap = new Map<string, string>();
+    allNames.forEach((item, idx) => {
+      translationMap.set(item.id, translatedNames[idx]);
+    });
+
+    // Apply translations to tree
+    return this.applyTranslationsToTree(categories, translationMap, targetLang);
+  }
+
+  /**
+   * Collect all category names from tree (for batch translation)
+   */
+  private collectCategoryNames(categories: any[], result: { id: string; name: string }[]): void {
+    for (const cat of categories) {
+      if (cat.name) {
+        const catId = cat._id ? cat._id.toString() : (cat.id ? cat.id.toString() : '');
+        if (catId) {
+          result.push({ id: catId, name: cat.name });
+        }
+      }
+      if (cat.children && cat.children.length) {
+        this.collectCategoryNames(cat.children, result);
+      }
+    }
+  }
+
+  /**
+   * Apply translations to category tree
+   */
+  private applyTranslationsToTree(categories: any[], translationMap: Map<string, string>, targetLang: string): any[] {
+    return categories.map(cat => {
+      const catObj = cat.toObject ? cat.toObject() : { ...cat };
+      const catId = catObj._id ? catObj._id.toString() : (catObj.id ? catObj.id.toString() : '');
+      const translatedName = translationMap.get(catId);
+
+      if (translatedName) {
+        catObj._originalName = catObj.name;
+        catObj.name = translatedName;
+      }
+
+      catObj._translated = true;
+      catObj._targetLang = targetLang;
+
+      if (catObj.children && catObj.children.length) {
+        catObj.children = this.applyTranslationsToTree(catObj.children, translationMap, targetLang);
+      }
+
+      return catObj;
+    });
+  }
+
+  /**
+   * Translate opening name with ECO code preservation
+   * Input: "Italian Game", eco: "C50"
+   * Output (es): "Apertura Italiana (C50)"
+   */
+  public async translateOpeningName(
+    openingName: string,
+    eco: string,
+    targetLang: string = 'es'
+  ): Promise<string> {
+    if (targetLang === 'en') {
+      return eco ? `${openingName} (${eco})` : openingName;
+    }
+
+    const translatedName = await translationClient.translate(openingName, 'en', targetLang);
+    return eco ? `${translatedName} (${eco})` : translatedName;
   }
 }

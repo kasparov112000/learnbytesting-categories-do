@@ -125,6 +125,39 @@ export default function (app, express, serviceobject) {
     serviceobject.ensureSubcategory(req, res);
   });
 
+  // Get categories with translated names
+  router.get(`${baseUrl}/translated`, async (req, res) => {
+    try {
+      const targetLang = req.query.lang as string || 'en';
+      console.log("ROUTE HIT: GET /categories/translated?lang=" + targetLang);
+      const categories = await serviceobject.getCategoriesWithTranslation(targetLang);
+      res.json({ result: categories, count: categories.length });
+    } catch (error) {
+      console.error('Error getting translated categories:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Translate opening name with ECO code preservation
+  router.post(`${baseUrl}/translate-opening`, async (req, res) => {
+    try {
+      const { openingName, eco, targetLang } = req.body;
+      console.log("ROUTE HIT: POST /categories/translate-opening", { openingName, eco, targetLang });
+      if (!openingName) {
+        return res.status(400).json({ error: 'openingName is required' });
+      }
+      const translated = await serviceobject.translateOpeningName(
+        openingName,
+        eco || '',
+        targetLang || 'es'
+      );
+      res.json({ original: openingName, translated, eco });
+    } catch (error) {
+      console.error('Error translating opening name:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Less specific routes should come after
   router.post(`${baseUrl}/:id`, (req, res) => {
     serviceobject.getByLineOfService(req, res);
