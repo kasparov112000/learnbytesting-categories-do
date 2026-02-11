@@ -609,7 +609,7 @@ export class CategoryService extends DbMicroServiceBase {
         name: newCategory.name,
         parent: newCategory.parent,
         active: newCategory.active,
-        translations: newCategory.translations
+        translations: (newCategory as any).translations
     });
 
     // If there's a parent ID, find and update the parent in the nested structure
@@ -3002,7 +3002,7 @@ export class CategoryService extends DbMicroServiceBase {
 
       if (bulkOps.length > 0) {
         // Fire and forget - don't await
-        this.dbService.getModel().bulkWrite(bulkOps).then(() => {
+        (this.dbService as any).dbModel.bulkWrite(bulkOps).then(() => {
           console.log(`[Categories] Persisted ${bulkOps.length} translations for lang=${targetLang}`);
         }).catch(err => {
           console.warn(`[Categories] Failed to persist translations: ${err.message}`);
@@ -3082,7 +3082,7 @@ export class CategoryService extends DbMicroServiceBase {
       }
 
       if (Object.keys(updateFields).length > 0) {
-        await this.dbService.getModel().updateOne(
+        await (this.dbService as any).dbModel.updateOne(
           { _id: categoryId },
           { $set: updateFields }
         );

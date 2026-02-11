@@ -1,0 +1,251 @@
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { ICategory } from './schemas/category.schema';
+import { CategoryTreeService } from './category-tree.service';
+import { TranslationService } from '../translation/translation.service';
+import { v4 as uuidv4 } from 'uuid';
+
+@Injectable()
+export class CategoriesService {
+  private readonly logger = new Logger(CategoriesService.name);
+
+  constructor(
+    @InjectModel('Categories') private readonly categoryModel: Model<ICategory>,
+    private readonly treeService: CategoryTreeService,
+    private readonly translationService: TranslationService,
+  ) {}
+
+  async getAll(): Promise<{ result: ICategory[]; count: number }> {
+    this.logger.log('Getting all categories');
+    const result = await this.categoryModel.find().lean();
+    return { result, count: result.length };
+  }
+
+  async createCategory(body: any, req: any): Promise<any> {
+    this.logger.log(`Creating category: ${body.name}`);
+
+    if (body.parent) {
+      return this.treeService.createNewCategory(body, req);
+    }
+
+    // Root category
+    const newCategory: any = {
+      ...body,
+      _id: body._id || uuidv4(),
+      createUuid: body.createUuid || uuidv4(),
+      createCreatedDate: new Date(),
+      createdDate: new Date(),
+      modifiedDate: new Date(),
+      active: body.active !== undefined ? body.active : true,
+      isActive: body.isActive !== undefined ? body.isActive : true,
+      children: body.children || [],
+    };
+
+    if (req?.body?.currentUser?.info?.guid) {
+      newCategory.createdByGuid = req.body.currentUser.info.guid;
+      newCategory.modifiedByGuid = req.body.currentUser.info.guid;
+    }
+
+    const created = await this.categoryModel.create(newCategory);
+    return created.toObject();
+  }
+
+  async updateCategoryById(id: string, body: any, req: any): Promise<any> {
+    this.logger.log(`Updating category: ${id}`);
+    const existing = await this.categoryModel.findById(id).lean();
+    if (!existing) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+
+    const updated = this.treeService.getUpdatedCategory(existing, body);
+    updated.modifiedDate = new Date();
+
+    if (req?.body?.currentUser?.info?.guid) {
+      updated.modifiedByGuid = req.body.currentUser.info.guid;
+    }
+
+    const result = await this.categoryModel.findByIdAndUpdate(id, updated, { new: true, lean: true });
+    return result;
+  }
+
+  async delete(id: string): Promise<any> {
+    this.logger.log(`Deleting category: ${id}`);
+    const result = await this.categoryModel.findByIdAndDelete(id);
+    if (!result) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+    return { success: true, message: `Category ${id} deleted` };
+  }
+
+  async findCategoryInTree(id: string): Promise<any> {
+    if (!id) {
+      throw new BadRequestException('Category ID is required');
+    }
+
+    const allCategories = await this.categoryModel.find().lean();
+    const found = this.treeService.findInTree(allCategories, id);
+
+    if (!found) {
+      throw new NotFoundException(`Category with ID ${id} not found in tree`);
+    }
+
+    return found;
+  }
+
+  async getCategoryWithResolvedAiConfig(id: string): Promise<any> {
+    const allCategories = await this.categoryModel.find().lean();
+    const found = this.treeService.findInTree(allCategories, id);
+
+    if (!found) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+
+    // Resolve inherited AI config
+    const resolvedConfig = this.treeService.resolveAiConfig(allCategories, found);
+    return { ...found, resolvedAiConfig: resolvedConfig };
+  }
+
+  async updateCategoryAiConfig(id: string, aiConfig: any): Promise<any> {
+    const result = await this.categoryModel.findByIdAndUpdate(
+      id,
+      { $set: { aiConfig } },
+      { new: true, lean: true },
+    );
+
+    if (!result) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+
+    return result;
+  }
+
+  async importCategoryTree(body: any): Promise<any> {
+    const categories = body.categories || body;
+    if (!Array.isArray(categories)) {
+      throw new BadRequestException('Import data must be an array of categories');
+    }
+
+    const results = [];
+    for (const category of categories) {
+      const created = await this.categoryModel.create({
+        ...category,
+        _id: category._id || uuidv4(),
+        createUuid: category.createUuid || uuidv4(),
+        createCreatedDate: new Date(),
+      });
+      results.push(created.toObject());
+    }
+
+    return { success: true, imported: results.length, categories: results };
+  }
+
+  async exportCategoryTree(): Promise<any> {
+    const categories = await this.categoryModel.find().lean();
+    return { success: true, count: categories.length, categories };
+  }
+
+  async ensureSubcategory(body: any): Promise<any> {
+    const { parentId, name, ...rest } = body;
+
+    if (!parentId || !name) {
+      throw new BadRequestException('parentId and name are required');
+    }
+
+    // Check if subcategory already exists
+    const allCategories = await this.categoryModel.find().lean();
+    const parent = this.treeService.findInTree(allCategories, parentId);
+
+    if (!parent) {
+      throw new NotFoundException(`Parent category ${parentId} not found`);
+    }
+
+    const existing = (parent.children || []).find((c: any) => c.name === name);
+    if (existing) {
+      return { success: true, existed: true, category: existing };
+    }
+
+    // Create new subcategory under parent
+    const newChild = {
+      _id: uuidv4(),
+      name,
+      createUuid: uuidv4(),
+      createCreatedDate: new Date(),
+      active: true,
+      isActive: true,
+      children: [],
+      parent: parentId,
+      ...rest,
+    };
+
+    // Add to parent's children array
+    await this.categoryModel.findByIdAndUpdate(
+      parent._id,
+      { $push: { children: newChild } },
+    );
+
+    return { success: true, existed: false, category: newChild };
+  }
+
+  async getCategoriesWithTranslation(targetLang: string): Promise<any> {
+    const categories = await this.categoryModel.find().lean();
+
+    if (!targetLang || targetLang === 'en') {
+      return { result: categories, count: categories.length };
+    }
+
+    // Apply translations
+    const translated = categories.map((cat: any) => ({
+      ...cat,
+      name: cat.translations?.[targetLang] || cat.name,
+    }));
+
+    return { result: translated, count: translated.length };
+  }
+
+  async translateOpeningName(openingName: string, eco: string, targetLang: string): Promise<any> {
+    if (!openingName) {
+      throw new BadRequestException('Opening name is required');
+    }
+
+    const translated = await this.translationService.translate(openingName, 'en', targetLang || 'es');
+    return { original: openingName, translated, eco, targetLang: targetLang || 'es' };
+  }
+
+  async syncCreateCategories(body: any, req: any): Promise<any> {
+    const categories = body.categories || body;
+    if (!Array.isArray(categories)) {
+      throw new BadRequestException('Categories array is required');
+    }
+
+    const results = [];
+    for (const cat of categories) {
+      const existing = await this.categoryModel.findOne({ name: cat.name }).lean();
+      if (existing) {
+        results.push({ ...existing, existed: true });
+      } else {
+        const created = await this.categoryModel.create({
+          ...cat,
+          _id: cat._id || uuidv4(),
+          createUuid: cat.createUuid || uuidv4(),
+          createCreatedDate: new Date(),
+        });
+        results.push({ ...created.toObject(), existed: false });
+      }
+    }
+
+    return { success: true, results };
+  }
+
+  async getByLineOfService(id: string, body: any): Promise<any> {
+    // TODO: Migrate complex filtering logic from old CategoryService.getByLineOfService
+    const categories = await this.categoryModel.find().lean();
+    return { result: categories, count: categories.length };
+  }
+
+  async getByCategory(body: any): Promise<any> {
+    // TODO: Migrate complex filtering logic from old CategoryService.filterByCategory2
+    const categories = await this.categoryModel.find().lean();
+    return { result: categories, count: categories.length };
+  }
+}

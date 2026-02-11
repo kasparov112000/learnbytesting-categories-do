@@ -356,7 +356,7 @@ describe('CategoryService', () => {
         .mockResolvedValue(mockData);
 
       // Reset response mock between tests
-      mockRes.json.mockClear();
+      (mockRes.json as jest.Mock).mockClear();
     });
 
     afterEach(() => {
@@ -422,8 +422,8 @@ describe('CategoryService', () => {
       
       // Verify the mock response was called
       expect(mockRes.json).toHaveBeenCalled();
-      const responseArg = mockRes.json.mock.calls[0][0];
-      
+      const responseArg = (mockRes.json as jest.Mock).mock.calls[0][0];
+
       // Check that the rows property exists and has the expected content
       expect(responseArg).toHaveProperty('rows');
       expect(responseArg.rows).toEqual(mockFlattenedData);
@@ -471,7 +471,7 @@ describe('CategoryService', () => {
       await categoryService.gridFlatten(req as Request, mockRes as Response);
       
       expect(mockRes.json).toHaveBeenCalled();
-      const responseArg = mockRes.json.mock.calls[0][0];
+      const responseArg = (mockRes.json as jest.Mock).mock.calls[0][0];
       expect(responseArg.rows.length).toBeGreaterThan(0);
       
       // The first item should be 'A Child' since we're sorting by name ascending
@@ -507,8 +507,8 @@ describe('CategoryService', () => {
       await categoryService.gridFlatten(req as Request, mockRes as Response);
       
       expect(mockRes.json).toHaveBeenCalled();
-      const responseArg = mockRes.json.mock.calls[0][0];
-      
+      const responseArg = (mockRes.json as jest.Mock).mock.calls[0][0];
+
       // Should return the total number of items
       expect(responseArg.lastRow).toBeGreaterThan(3);
       

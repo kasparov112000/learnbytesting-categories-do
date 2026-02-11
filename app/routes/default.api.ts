@@ -29,10 +29,6 @@ export default function (app, express, serviceobject) {
     serviceobject.gridFlatten(req, res);
   });
 
-  router.post(`${baseUrl}/lbt-categories`, (req, res) => {
-    serviceobject.gridFlatten(req, res);
-  });
-
   router.post(`${baseUrl}/search`, (req, res) => {
     serviceobject.search(req, res);
   });
@@ -57,26 +53,11 @@ export default function (app, express, serviceobject) {
     dbService.close();
   });
 
-  // More specific routes should come first
-  router.post(`${baseUrl}/getByCategory`, (req, res) => {
-    serviceobject.getByCategory(req, res);
-  });
-
   router.post(`${baseUrl}/sync/create`, (req, res) => {
     serviceobject.syncCreateCategories(req, res);
   });
 
   router.post(`${baseUrl}/create`, (req, res) => {
-    console.log("ROUTE HIT: POST /categories/create");
-    console.log("========== CATEGORY CREATE ROUTE ==========");
-    console.log("Route hit: POST /categories/create");
-    console.log("Timestamp:", new Date().toISOString());
-    console.log("Content-Type:", req.headers['content-type']);
-    console.log("Request Body Size:", JSON.stringify(req.body).length, "bytes");
-    console.log("Has req.body:", !!req.body);
-    console.log("Body type:", typeof req.body);
-    console.log("Body keys:", req.body ? Object.keys(req.body) : "No body");
-    console.log("Calling serviceobject.createCategory...");
     serviceobject.createCategory(req, res);
   });
 
@@ -158,13 +139,14 @@ export default function (app, express, serviceobject) {
     }
   });
 
-  // Less specific routes should come after
-  router.post(`${baseUrl}/:id`, (req, res) => {
-    serviceobject.getByLineOfService(req, res);
+  // Specific named routes must come before the :id wildcard
+  router.post(`${baseUrl}/query`, (req, res) => {
+    serviceobject.getByCategory(req, res);
   });
 
-  router.post(baseUrl, (req, res) => {
-    serviceobject.getByCategory(req, res);
+  // Wildcard :id route - must be last among POST routes
+  router.post(`${baseUrl}/:id`, (req, res) => {
+    serviceobject.getByLineOfService(req, res);
   });
 
   router.put(`${baseUrl}/:id`, (req, res) => {
@@ -192,56 +174,7 @@ export default function (app, express, serviceobject) {
   });
 
   router.delete(`${baseUrl}/:id`, (req, res) => {
-    console.log("info", `DELETE Category request received - ID: ${req.params.id}`, {
-      timestamp: Date.now(),
-      txnId: req.id,
-      categoryId: req.params.id,
-      requestHeaders: req.headers,
-      requestQuery: req.query
-    });
-    
-    try {
-      console.log("debug", `Attempting to delete category with ID: ${req.params.id}`);
-      
-      // Call the service method with a callback to log the outcome
-      const originalDelete = serviceobject.delete;
-      serviceobject.delete = function(request, response) {
-        console.log("debug", "Inside delete method - before service call");
-        
-        // Wrap the response object to intercept the result
-        const originalJson = response.json;
-        const originalStatus = response.status;
-        
-        response.json = function(data) {
-          console.log("info", `Delete operation result:`, {
-            result: data,
-            success: data && (data.success || data.deletedCount > 0)
-          });
-          return originalJson.call(this, data);
-        };
-        
-        response.status = function(code) {
-          console.log("info", `Delete operation status code: ${code}`);
-          return originalStatus.call(this, code);
-        };
-        
-        // Call the original delete method
-        return originalDelete.call(this, request, response);
-      };
-      
-      serviceobject.delete(req, res);
-      
-      // Restore the original method
-      serviceobject.delete = originalDelete;
-    } catch (error) {
-      console.error("error", `Error in delete category endpoint: ${error.message}`, {
-        error: error.stack,
-        categoryId: req.params.id
-      });
-      
-      // Let the original error handling take over
-      serviceobject.delete(req, res);
-    }
+    serviceobject.delete(req, res);
   });
 
   return router;

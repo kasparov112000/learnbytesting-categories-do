@@ -1,44 +1,24 @@
 #
 # BUILD
 #
-FROM node:18-alpine
-WORKDIR /var/app
-
-ADD package.json .
-# ADD .npmrc .
-RUN npm install
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
 #
-# UNIT TESTING
-#
-FROM node:18-alpine
-
-ARG UNIT_TEST=no
-WORKDIR /var/app
-
-COPY --from=0 /var/app  /var/app
-
-RUN if [ "${UNIT_TEST}" = "yes" ]; then \
-    echo "**** UNIT TESTING ****"; \
-    npm test; \
-    fi
-
-#
 # RUNTIME
 #
-FROM node:18-alpine
+FROM node:24-alpine
+WORKDIR /app
 EXPOSE 3000
+
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./
+
 ENV ENV_NAME=${ENV_NAME}
 
-WORKDIR /var/app
-
-COPY --from=0 /var/app/package.json .
-# COPY --from=0 /var/app/.npmrc .
-COPY --from=0 /var/app/build .
-COPY --from=0 /var/app/docs ./docs/
-
-RUN npm install --production
-
-ENTRYPOINT ["npm", "start"]
+CMD ["node", "dist/main"]

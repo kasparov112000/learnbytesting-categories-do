@@ -2,13 +2,6 @@ on:
   push:
     branches:
       - main
-      - fix-build
-      - fix-build2
-    # paths:
-    #   - 'config/**'
-    #   - 'site/**'
-    #   - 'Dockerfile'
-    #   - '.github/workflows/**'
 
 jobs:
   test:
@@ -16,26 +9,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '24'
           cache: 'npm'
 
-      - name: Install dependencies with DevDependencies
-        run: npm install
-
-      - name: Install Jest, ts-jest and Jest reporters explicitly
-        run: npm install --save-dev jest ts-jest @types/jest jest-junit
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run unit tests
-        run: npx jest --config=jest.config.js
+        run: npx jest --config=jest.nestjs.config.js
 
       - name: Generate test coverage report
-        run: npx jest --config=jest.config.js --coverage --coverageDirectory=output/coverage/jest
-        
+        run: npx jest --config=jest.nestjs.config.js --coverage --coverageDirectory=output/coverage/jest
+
       - name: Archive test results
         uses: actions/upload-artifact@v4
         with:
@@ -49,7 +39,7 @@ jobs:
     needs: test
     steps:
       - name: Checkout master
-        uses: actions/checkout@master
+        uses: actions/checkout@v4
 
       - name: Update SHA
         run: echo $GITHUB_SHA > $GITHUB_WORKSPACE/helm/notes
@@ -60,26 +50,23 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Login to DockerHub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Setup Docker buildx for better build capabilities
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
-      # Fixed the build-push-action step
       - name: Build and push
         id: docker_build
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v6
         with:
-          context: .  # Use local context instead of Git URL
+          context: .
           push: true
           tags: |
             kasparov112000/learnbytesting-categories-do:latest
             kasparov112000/learnbytesting-categories-do:${{ github.sha }}
-          # Pass GitHub token as a secret but using proper format
           secrets: |
             "GIT_AUTH_TOKEN=${{ secrets.MYTOKEN }}"
 
@@ -88,88 +75,54 @@ jobs:
           doctl kubernetes cluster kubeconfig save --expiry-seconds 600 3b23a2dd-3391-4d1a-a478-e2a5564de99c
           echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
 
-      # Diagnostic logging before Helm deployment
       - name: Pre-deployment diagnostics
         run: |
           echo "=== Kubernetes Cluster Info ==="
           kubectl cluster-info
-          
-          echo "=== Nodes Status ==="
-          kubectl get nodes -o wide
-          
+
           echo "=== Current Deployments ==="
           kubectl get deployments -o wide
-          
-          echo "=== Pods Status ==="
-          kubectl get pods -o wide
-          
-          echo "=== Events (last 5 minutes) ==="
-          kubectl get events --sort-by='.lastTimestamp' | tail -20
-          
+
           echo "=== Helm Releases ==="
           helm list -A
 
       - name: Prep helm chart
         run: |
-          echo "=== Chart.yaml before modification ==="
-          cat ./helm/Chart.yaml
-          
           mv ./helm/Chart.yaml ./helm/Chart.old.yaml &&
           cat ./helm/Chart.old.yaml | grep -v appVersion > ./helm/Chart.yaml &&
           echo -e "\r\nappVersion: v${GITHUB_REF##*/}\r\n" >> ./helm/Chart.yaml
-          
-          echo "=== Chart.yaml after modification ==="
-          cat ./helm/Chart.yaml
-          
-          echo "=== Contents of values.yaml ==="
-          cat ./helm/values.yaml
-      
-      # Verify other Helm-related files
+
       - name: Check Helm templates
         run: |
-          echo "=== List of template files ==="
-          find ./helm/templates -type f | sort
-          
-          echo "=== Validating helm chart ==="
           helm lint ./helm/
-          
-          echo "=== Dry run of helm upgrade ==="
           helm upgrade --dry-run categories ./helm/ --install --set=app.name=categories --values=./helm/values.yaml
-      
-      # Install Helm
+
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
         with:
           version: 'latest'
-      
-      # Actual deployment with increased timeout
+
       - name: Deploy
         run: |
           helm upgrade categories ./helm/ --install --wait --atomic --timeout 15m \
             --set=app.name=categories \
             --set=image.tag=${{ github.sha }} \
             --values=./helm/values.yaml --debug
-      
-      # Diagnostic logging after Helm attempt
+
       - name: Post-deployment diagnostics
-        if: always()  # Run even if previous step failed
+        if: always()
         run: |
           echo "=== Helm Release Status ==="
           helm status categories || echo "Release not found"
-          
-          echo "=== Updated Deployments ==="
-          kubectl get deployments -o wide
-          
+
           echo "=== Updated Pods ==="
           kubectl get pods -o wide
-          
+
           echo "=== Recent Events ==="
           kubectl get events --sort-by='.lastTimestamp' | tail -20
-          
+
           echo "=== Pod Logs (if available) ==="
           POD=$(kubectl get pods -l app=categories -o jsonpath="{.items[0].metadata.name}" 2>/dev/null) || echo "No pods found"
           if [ -n "$POD" ]; then
             kubectl logs $POD --tail=50 || echo "Could not get logs"
-            echo "=== Pod Description ==="
-            kubectl describe pod $POD || echo "Could not describe pod"
           fi

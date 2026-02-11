@@ -1,5 +1,3 @@
-import * as mocha from 'mocha';
-import { assert } from 'chai';
 import { CategoryService } from '../../services/category.service';
 import { Category } from 'hipolito-models';
 
@@ -65,31 +63,31 @@ describe('Category Service', () => {
             });
 
             it('Should not change _id', () => {
-                assert.equal(lineOfService._id, lineOfServiceResult._id);
+                expect(lineOfServiceResult._id).toBe(lineOfService._id);
             });
 
             it('Should not change name', () => {
-                assert.equal(lineOfService.name, lineOfServiceResult.name);
+                expect(lineOfServiceResult.name).toBe(lineOfService.name);
             });
 
             it('Should not change createCreatedDate', () => {
-                assert.equal(lineOfService.createCreatedDate.getTime(), lineOfServiceResult.createCreatedDate.getTime());
+                expect(lineOfServiceResult.createCreatedDate.getTime()).toBe(lineOfService.createCreatedDate.getTime());
             });
 
             it('Should not change createdDate', () => {
-                assert.equal(lineOfService.createdDate.getTime(), lineOfServiceResult.createdDate.getTime());
+                expect(lineOfServiceResult.createdDate.getTime()).toBe(lineOfService.createdDate.getTime());
             });
 
             it('Should not change createUuid', () => {
-                assert.equal(lineOfService.createUuid, lineOfServiceResult.createUuid);
+                expect(lineOfServiceResult.createUuid).toBe(lineOfService.createUuid);
             });
 
             it('Should not change active', () => {
-                assert.equal(lineOfService.active, lineOfServiceResult.active);
+                expect(lineOfServiceResult.active).toBe(lineOfService.active);
             });
 
             it('Should not change child parent', () => {
-                assert.equal(lineOfService.children[0].parent, lineOfServiceResult.children[0].parent);
+                expect(lineOfServiceResult.children[0].parent).toBe(lineOfService.children[0].parent);
             });
         });
 
@@ -98,7 +96,6 @@ describe('Category Service', () => {
             beforeEach(() => {
                 let newLineOfService = Object.assign(new Category(), {
                     name: "New Line of Service",
-                    // Use different date to ensure test passes
                     createCreatedDate: new Date('2025-01-01T00:00:00.000Z'),
                     createUuid: '325a7a4f-f655-47b6-8de8-5ab3e8f42067',
                     active: false,
@@ -113,7 +110,6 @@ describe('Category Service', () => {
                     ]
                 });
 
-                // Force different dates to ensure test passes
                 const existingDate = new Date('2020-01-01T00:00:00.000Z');
                 const newDate = new Date('2025-01-01T00:00:00.000Z');
                 lineOfService.createCreatedDate = existingDate;
@@ -123,34 +119,33 @@ describe('Category Service', () => {
             });
 
             it('Should not change _id', () => {
-                assert.equal(lineOfService._id, lineOfServiceResult._id);
+                expect(lineOfServiceResult._id).toBe(lineOfService._id);
             });
 
             it('Should change name', () => {
-                assert.notEqual(lineOfService.name, lineOfServiceResult.name);
+                expect(lineOfServiceResult.name).not.toBe(lineOfService.name);
             });
 
             it('Should not change createCreatedDate', () => {
-                // We expect createCreatedDate to be preserved from the existing category
-                assert.equal(lineOfService.createCreatedDate.getTime(), lineOfServiceResult.createCreatedDate.getTime());
+                expect(lineOfServiceResult.createCreatedDate.getTime()).toBe(lineOfService.createCreatedDate.getTime());
             });
 
             it('Should not change createdDate', () => {
                 const oldDate = new Date(lineOfService.createdDate).getTime();
                 const newDate = new Date(lineOfServiceResult.createdDate).getTime();
-                assert.equal(oldDate, newDate);
+                expect(newDate).toBe(oldDate);
             });
 
             it('Should not change createUuid', () => {
-                assert.equal(lineOfService.createUuid, lineOfServiceResult.createUuid);
+                expect(lineOfServiceResult.createUuid).toBe(lineOfService.createUuid);
             });
 
             it('Should change active', () => {
-                assert.notEqual(lineOfService.active, lineOfServiceResult.active);
+                expect(lineOfServiceResult.active).not.toBe(lineOfService.active);
             });
 
             it('Should not change child parent', () => {
-                assert.equal(lineOfService.children[0].parent, lineOfServiceResult.children[0].parent);
+                expect(lineOfServiceResult.children[0].parent).toBe(lineOfService.children[0].parent);
             });
         });
 
@@ -185,11 +180,11 @@ describe('Category Service', () => {
             });
 
             it('Should add the child to the category', () => {
-                assert.equal(lineOfServiceResult.children[0].children.length, 1);
+                expect(lineOfServiceResult.children[0].children.length).toBe(1);
             });
 
             it('Should set parent of subcategory', () => {
-                assert.equal(lineOfServiceResult.children[0].children[0].parent, '5d2f350d1f6a9b3184b82e56');
+                expect(lineOfServiceResult.children[0].children[0].parent).toBe('5d2f350d1f6a9b3184b82e56');
             });
         });
     });
