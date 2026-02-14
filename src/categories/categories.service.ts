@@ -16,10 +16,28 @@ export class CategoriesService {
     private readonly translationService: TranslationService,
   ) {}
 
-  async getAll(): Promise<{ result: ICategory[]; count: number }> {
+  async getAll(query?: Record<string, any>): Promise<{ result: any[]; count: number }> {
     this.logger.log('Getting all categories');
-    const result = await this.categoryModel.find().lean();
+    if (query?.all === 'true') {
+      const result = await this.categoryModel.find().select('-children').lean();
+      return { result, count: result.length };
+    }
+    // Default: return only main categories (those with children), excluding the children payload
+    // Chess opening reference docs have no children and are not user-facing navigation categories
+    const result = await this.categoryModel
+      .find({ 'children.0': { $exists: true } })
+      .select('-children')
+      .lean();
     return { result, count: result.length };
+  }
+
+  async getById(id: string): Promise<ICategory> {
+    this.logger.log(`Getting category by ID: ${id}`);
+    const result = await this.categoryModel.findById(id).lean();
+    if (!result) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+    return result;
   }
 
   async createCategory(body: any, req: any): Promise<any> {

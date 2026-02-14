@@ -15,9 +15,9 @@ export class CategoriesController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all categories' })
-  async getAll() {
-    return this.categoriesService.getAll();
+  @ApiOperation({ summary: 'Get all categories. Use ?all=true to include chess opening reference data.' })
+  async getAll(@Query() query: Record<string, any>) {
+    return this.categoriesService.getAll(query);
   }
 
   @Post('grid')
@@ -96,6 +96,12 @@ export class CategoriesController {
   @ApiOperation({ summary: 'Find category anywhere in the tree' })
   async findInTree(@Param('id') id: string) {
     return this.categoriesService.findCategoryInTree(id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get category by ID (with children)' })
+  async getById(@Param('id') id: string) {
+    return this.categoriesService.getById(id);
   }
 
   @Post('query')

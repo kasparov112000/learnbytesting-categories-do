@@ -92,7 +92,7 @@ describe('CategoriesController', () => {
     it('should call categoriesService.getAll and return result', async () => {
       categoriesService.getAll.mockResolvedValue(allCategories);
 
-      const result = await controller.getAll();
+      const result = await controller.getAll({});
 
       expect(categoriesService.getAll).toHaveBeenCalledTimes(1);
       expect(result).toEqual(allCategories);
@@ -379,7 +379,7 @@ describe('CategoriesController', () => {
     it('should propagate service errors to caller', async () => {
       categoriesService.getAll.mockRejectedValue(new Error('DB connection failed'));
 
-      await expect(controller.getAll()).rejects.toThrow('DB connection failed');
+      await expect(controller.getAll({})).rejects.toThrow('DB connection failed');
     });
 
     it('should propagate NotFoundException from delete', async () => {
