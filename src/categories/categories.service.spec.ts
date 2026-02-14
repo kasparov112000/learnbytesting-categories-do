@@ -112,7 +112,9 @@ describe('CategoriesService', () => {
 
   describe('getAll()', () => {
     it('should return all categories with count', async () => {
-      model.find.mockReturnValue({ lean: jest.fn().mockResolvedValue(allCategories) });
+      const lean = jest.fn().mockResolvedValue(allCategories);
+      const select = jest.fn().mockReturnValue({ lean });
+      model.find.mockReturnValue({ select });
 
       const result = await service.getAll();
 
@@ -122,7 +124,9 @@ describe('CategoriesService', () => {
     });
 
     it('should return empty array when no categories exist', async () => {
-      model.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([]) });
+      const lean = jest.fn().mockResolvedValue([]);
+      const select = jest.fn().mockReturnValue({ lean });
+      model.find.mockReturnValue({ select });
 
       const result = await service.getAll();
 
