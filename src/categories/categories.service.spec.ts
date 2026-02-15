@@ -237,7 +237,7 @@ describe('CategoriesService', () => {
   // ─── updateCategoryById ───────────────────────────────
 
   describe('updateCategoryById()', () => {
-    it('should find existing category, merge, and save', async () => {
+    it('should find root category, merge via treeService, and save with $set', async () => {
       model.findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(sicilian) });
       treeService.getUpdatedCategory.mockReturnValue({ ...sicilian, name: 'Sicilian Updated' });
       model.findByIdAndUpdate.mockResolvedValue({ ...sicilian, name: 'Sicilian Updated' });
@@ -246,21 +246,42 @@ describe('CategoriesService', () => {
 
       expect(model.findById).toHaveBeenCalledWith('cat-001');
       expect(treeService.getUpdatedCategory).toHaveBeenCalledWith(sicilian, { name: 'Sicilian Updated' });
-      expect(model.findByIdAndUpdate).toHaveBeenCalledWith(
-        'cat-001',
-        expect.objectContaining({ name: 'Sicilian Updated' }),
-        { new: true, lean: true },
-      );
+      // New implementation uses { $set: updateFields } (without _id)
+      const updateArg = model.findByIdAndUpdate.mock.calls[0][1];
+      expect(updateArg).toHaveProperty('$set');
+      expect(updateArg.$set.name).toBe('Sicilian Updated');
+      expect(updateArg.$set).not.toHaveProperty('_id');
       expect(result.name).toBe('Sicilian Updated');
     });
 
-    it('should throw NotFoundException if category does not exist', async () => {
+    it('should fall back to nested tree search when not found at root', async () => {
+      // findById returns null (not a root document)
       model.findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) });
+      // find().lean() returns all roots with nested children
+      model.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([sicilianWithChildren]) });
+      // treeService finds the nested child
+      treeService.findInTree.mockReturnValue(najdorf);
+      model.findByIdAndUpdate.mockResolvedValue(sicilianWithChildren);
+
+      const result = await service.updateCategoryById('cat-004', { visibleMenuItems: [{ key: '/chess' }] }, {});
+
+      expect(model.find).toHaveBeenCalled();
+      expect(treeService.findInTree).toHaveBeenCalledWith(sicilianWithChildren.children, 'cat-004');
+      // Should update the root document's children
+      const updateArg = model.findByIdAndUpdate.mock.calls[0][1];
+      expect(updateArg.$set).toHaveProperty('children');
+      expect(updateArg.$set).toHaveProperty('modifiedDate');
+    });
+
+    it('should throw NotFoundException if category not found anywhere', async () => {
+      model.findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(null) });
+      model.find.mockReturnValue({ lean: jest.fn().mockResolvedValue([sicilianWithChildren]) });
+      treeService.findInTree.mockReturnValue(null);
 
       await expect(service.updateCategoryById('nonexistent', {}, {})).rejects.toThrow(NotFoundException);
     });
 
-    it('should set modifiedDate on update', async () => {
+    it('should set modifiedDate on root update', async () => {
       model.findById.mockReturnValue({ lean: jest.fn().mockResolvedValue(sicilian) });
       treeService.getUpdatedCategory.mockReturnValue({ ...sicilian });
       model.findByIdAndUpdate.mockResolvedValue(sicilian);
@@ -268,7 +289,7 @@ describe('CategoriesService', () => {
       await service.updateCategoryById('cat-001', {}, {});
 
       const updateArg = model.findByIdAndUpdate.mock.calls[0][1];
-      expect(updateArg.modifiedDate).toBeInstanceOf(Date);
+      expect(updateArg.$set.modifiedDate).toBeInstanceOf(Date);
     });
 
     it('should set modifiedByGuid when currentUser is present', async () => {
@@ -280,7 +301,7 @@ describe('CategoriesService', () => {
       await service.updateCategoryById('cat-001', {}, req);
 
       const updateArg = model.findByIdAndUpdate.mock.calls[0][1];
-      expect(updateArg.modifiedByGuid).toBe('admin-guid');
+      expect(updateArg.$set.modifiedByGuid).toBe('admin-guid');
     });
   });
 
