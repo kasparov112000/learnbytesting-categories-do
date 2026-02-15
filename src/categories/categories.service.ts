@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ICategory } from './schemas/category.schema';
 import { CategoryTreeService } from './category-tree.service';
 import { TranslationService } from '../translation/translation.service';
@@ -15,6 +15,18 @@ export class CategoriesService {
     private readonly treeService: CategoryTreeService,
     private readonly translationService: TranslationService,
   ) {}
+
+  /**
+   * Coerce a string ID to ObjectId when it looks like one (24 hex chars).
+   * Schema uses _id: Mixed, so Mongoose won't auto-cast. Without this,
+   * findById("abc123...") queries for a string but the DB stores ObjectId → no match → 404.
+   */
+  private coerceId(id: string): any {
+    if (/^[a-fA-F0-9]{24}$/.test(id)) {
+      return new Types.ObjectId(id);
+    }
+    return id;
+  }
 
   async getAll(query?: Record<string, any>): Promise<{ result: any[]; count: number }> {
     this.logger.log('Getting all categories');
@@ -75,7 +87,7 @@ export class CategoriesService {
 
   async getById(id: string): Promise<ICategory> {
     this.logger.log(`Getting category by ID: ${id}`);
-    const result = await this.categoryModel.findById(id).lean();
+    const result = await this.categoryModel.findById(this.coerceId(id)).lean();
     if (!result) {
       throw new NotFoundException(`Category with ID ${id} not found`);
     }
@@ -115,7 +127,8 @@ export class CategoriesService {
     this.logger.log(`Updating category: ${id}`);
 
     // First try direct root-level lookup
-    const rootDoc = await this.categoryModel.findById(id).lean();
+    const coercedId = this.coerceId(id);
+    const rootDoc = await this.categoryModel.findById(coercedId).lean();
     if (rootDoc) {
       this.logger.log(`Found category at root level: ${rootDoc.name}`);
       const updated = this.treeService.getUpdatedCategory(rootDoc, body);
@@ -124,7 +137,7 @@ export class CategoriesService {
         updated.modifiedByGuid = req.body.currentUser.info.guid;
       }
       const { _id, ...updateFields } = updated;
-      const result = await this.categoryModel.findByIdAndUpdate(id, { $set: updateFields }, { new: true, lean: true });
+      const result = await this.categoryModel.findByIdAndUpdate(coercedId, { $set: updateFields }, { new: true, lean: true });
       return result;
     }
 
@@ -189,7 +202,7 @@ export class CategoriesService {
 
   async delete(id: string): Promise<any> {
     this.logger.log(`Deleting category: ${id}`);
-    const result = await this.categoryModel.findByIdAndDelete(id);
+    const result = await this.categoryModel.findByIdAndDelete(this.coerceId(id));
     if (!result) {
       throw new NotFoundException(`Category with ID ${id} not found`);
     }
@@ -226,7 +239,7 @@ export class CategoriesService {
 
   async updateCategoryAiConfig(id: string, aiConfig: any): Promise<any> {
     const result = await this.categoryModel.findByIdAndUpdate(
-      id,
+      this.coerceId(id),
       { $set: { aiConfig } },
       { new: true, lean: true },
     );
