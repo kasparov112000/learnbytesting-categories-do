@@ -36,7 +36,6 @@ jobs:
   build:
     name: Build, push, and deploy
     runs-on: ubuntu-latest
-    needs: test
     steps:
       - name: Checkout master
         uses: actions/checkout@v4
