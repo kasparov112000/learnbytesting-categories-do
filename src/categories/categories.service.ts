@@ -113,20 +113,78 @@ export class CategoriesService {
 
   async updateCategoryById(id: string, body: any, req: any): Promise<any> {
     this.logger.log(`Updating category: ${id}`);
-    const existing = await this.categoryModel.findById(id).lean();
-    if (!existing) {
-      throw new NotFoundException(`Category with ID ${id} not found`);
+
+    // First try direct root-level lookup
+    const rootDoc = await this.categoryModel.findById(id).lean();
+    if (rootDoc) {
+      this.logger.log(`Found category at root level: ${rootDoc.name}`);
+      const updated = this.treeService.getUpdatedCategory(rootDoc, body);
+      updated.modifiedDate = new Date();
+      if (req?.body?.currentUser?.info?.guid) {
+        updated.modifiedByGuid = req.body.currentUser.info.guid;
+      }
+      const { _id, ...updateFields } = updated;
+      const result = await this.categoryModel.findByIdAndUpdate(id, { $set: updateFields }, { new: true, lean: true });
+      return result;
     }
 
-    const updated = this.treeService.getUpdatedCategory(existing, body);
-    updated.modifiedDate = new Date();
+    // Not a root document — search recursively in nested children
+    this.logger.log(`Category ${id} not found at root, searching nested tree...`);
+    const allRoots = await this.categoryModel.find().lean();
 
-    if (req?.body?.currentUser?.info?.guid) {
-      updated.modifiedByGuid = req.body.currentUser.info.guid;
+    for (const root of allRoots) {
+      const found = this.treeService.findInTree(root.children || [], id);
+      if (found) {
+        this.logger.log(`Found category nested inside root: ${root.name} (${root._id})`);
+
+        // Merge update data into the nested child, preserving immutable and structural fields
+        const updateInChildren = (children: any[]): boolean => {
+          for (let i = 0; i < children.length; i++) {
+            if (String(children[i]._id) === String(id)) {
+              const original = children[i];
+              // Preserve structural fields that the frontend may send as shallow/stale
+              const preservedChildren = original.children;
+              const preservedId = original._id;
+              const preservedParent = original.parent;
+              const preservedCreatedDate = original.createdDate;
+              const preservedCreateCreatedDate = original.createCreatedDate;
+              const preservedCreateUuid = original.createUuid;
+
+              // Merge only non-structural fields from body
+              const { children: _ignoreChildren, _id: _ignoreId, ...safeBody } = body;
+              Object.assign(original, safeBody);
+
+              // Restore preserved fields
+              original._id = preservedId;
+              original.parent = preservedParent;
+              original.children = preservedChildren;
+              original.createdDate = preservedCreatedDate;
+              original.createCreatedDate = preservedCreateCreatedDate;
+              original.createUuid = preservedCreateUuid;
+              original.modifiedDate = new Date();
+              return true;
+            }
+            if (children[i].children && updateInChildren(children[i].children)) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+        // Work on a mutable copy of root's children
+        const childrenCopy = JSON.parse(JSON.stringify(root.children));
+        updateInChildren(childrenCopy);
+
+        const result = await this.categoryModel.findByIdAndUpdate(
+          root._id,
+          { $set: { children: childrenCopy, modifiedDate: new Date() } },
+          { new: true, lean: true },
+        );
+        return result;
+      }
     }
 
-    const result = await this.categoryModel.findByIdAndUpdate(id, updated, { new: true, lean: true });
-    return result;
+    throw new NotFoundException(`Category with ID ${id} not found`);
   }
 
   async delete(id: string): Promise<any> {
