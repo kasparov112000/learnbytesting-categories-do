@@ -74,6 +74,7 @@ describe('CategoriesService', () => {
       findByIdAndDelete: jest.fn(),
       findOne: jest.fn(),
       create: jest.fn(),
+      aggregate: jest.fn(),
     };
 
     const mockTreeService = {
@@ -112,21 +113,17 @@ describe('CategoriesService', () => {
 
   describe('getAll()', () => {
     it('should return all categories with count', async () => {
-      const lean = jest.fn().mockResolvedValue(allCategories);
-      const select = jest.fn().mockReturnValue({ lean });
-      model.find.mockReturnValue({ select });
+      model.aggregate.mockResolvedValue(allCategories);
 
       const result = await service.getAll();
 
-      expect(model.find).toHaveBeenCalled();
+      expect(model.aggregate).toHaveBeenCalled();
       expect(result.result).toEqual(allCategories);
       expect(result.count).toBe(3);
     });
 
     it('should return empty array when no categories exist', async () => {
-      const lean = jest.fn().mockResolvedValue([]);
-      const select = jest.fn().mockReturnValue({ lean });
-      model.find.mockReturnValue({ select });
+      model.aggregate.mockResolvedValue([]);
 
       const result = await service.getAll();
 
