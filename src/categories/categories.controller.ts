@@ -38,6 +38,12 @@ export class CategoriesController {
     return this.categoryGridService.search(body.term || body.searchTerm);
   }
 
+  @Get(':id/shallow-children')
+  @ApiOperation({ summary: 'Get shallow children for lazy-loaded navigation (issue #80)' })
+  async getShallowChildren(@Param('id') id: string) {
+    return this.categoriesService.getShallowChildren(id);
+  }
+
   @Get(':id/ai-config')
   @ApiOperation({ summary: 'Get resolved AI config for a category' })
   async getAiConfig(@Param('id') id: string) {

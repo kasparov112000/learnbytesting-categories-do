@@ -22,13 +22,55 @@ export class CategoriesService {
       const result = await this.categoryModel.find().select('-children').lean();
       return { result, count: result.length };
     }
-    // Default: return only main categories (those with children), excluding the children payload
-    // Chess opening reference docs have no children and are not user-facing navigation categories
-    const result = await this.categoryModel
-      .find({ 'children.0': { $exists: true } })
-      .select('-children')
-      .lean();
+    // Return main categories with shallow children (name, _id, childrenCount only).
+    // This keeps the response small while providing enough data for tile navigation.
+    // Deep children are loaded on-demand via GET /categories/:id/shallow-children.
+    // See: https://github.com/kasparov112000/learnbytesting-ai/issues/80
+    const result = await this.categoryModel.aggregate([
+      { $match: { 'children.0': { $exists: true } } },
+      {
+        $addFields: {
+          children: {
+            $map: {
+              input: '$children',
+              as: 'child',
+              in: {
+                _id: '$$child._id',
+                name: '$$child.name',
+                isActive: '$$child.isActive',
+                childrenCount: { $size: { $ifNull: ['$$child.children', []] } },
+              },
+            },
+          },
+        },
+      },
+    ]);
     return { result, count: result.length };
+  }
+
+  /**
+   * Get shallow children for a category at any nesting level.
+   * Returns immediate children with _id, name, isActive, childrenCount — no grandchildren.
+   * Used by the frontend for lazy-loaded drill-down navigation.
+   * See: https://github.com/kasparov112000/learnbytesting-ai/issues/80
+   */
+  async getShallowChildren(id: string): Promise<{ result: any[]; parentName: string }> {
+    this.logger.log(`Getting shallow children for category: ${id}`);
+    const allCategories = await this.categoryModel.find().lean();
+    const found = this.treeService.findInTree(allCategories, id);
+
+    if (!found) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+
+    const shallowChildren = (found.children || []).map((child: any) => ({
+      _id: child._id,
+      name: child.name,
+      isActive: child.isActive,
+      childrenCount: Array.isArray(child.children) ? child.children.length : 0,
+    }));
+
+    return { result: shallowChildren, parentName: found.name };
   }
 
   async getById(id: string): Promise<ICategory> {
