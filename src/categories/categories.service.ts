@@ -80,6 +80,8 @@ export class CategoriesService {
       name: child.name,
       isActive: child.isActive,
       childrenCount: Array.isArray(child.children) ? child.children.length : 0,
+      ...(child.eco && { eco: child.eco }),
+      ...(child.pgn && { pgn: child.pgn }),
     }));
 
     return { result: shallowChildren, parentName: found.name };
@@ -366,6 +368,275 @@ export class CategoriesService {
     }
 
     return { success: true, results };
+  }
+
+  // ─── Opening-specific methods (ported from Express category.service.ts) ───
+
+  /**
+   * Find the "Opening Theory & Repertoire" subtree.
+   * It may be a root-level document OR a child of another category (e.g., "Chess").
+   */
+  private async findOpeningTheoryRoot(): Promise<any | null> {
+    // Collect ALL "Opening Theory" nodes across the entire database.
+    // The tree may be split across multiple top-level documents
+    // (e.g., "Chess" has A-D and "Technology > Chess" has E).
+    const mergedChildren: any[] = [];
+    const seenNames = new Set<string>();
+
+    // First: root-level documents matching "opening theory"
+    const rootDocs = await this.categoryModel
+      .find({ name: { $regex: /opening theory/i } })
+      .lean();
+    for (const doc of rootDocs) {
+      for (const child of ((doc as any).children || []) as any[]) {
+        if (child.name && !seenNames.has(child.name)) {
+          seenNames.add(child.name);
+          mergedChildren.push(child);
+        }
+      }
+    }
+
+    // Second: nested children matching "opening theory"
+    const parentDocs = await this.categoryModel
+      .find({ 'children.name': { $regex: /opening theory/i } })
+      .lean();
+    for (const parentDoc of parentDocs) {
+      const matches = ((parentDoc as any).children || []).filter(
+        (c: any) => /opening theory/i.test(c.name),
+      );
+      for (const match of matches) {
+        for (const child of ((match as any).children || []) as any[]) {
+          if (child.name && !seenNames.has(child.name)) {
+            seenNames.add(child.name);
+            mergedChildren.push(child);
+          }
+        }
+      }
+    }
+
+    // Also check deeper nesting (e.g., Technology > Chess > Opening Theory)
+    const deepParents = await this.categoryModel
+      .find({ 'children.children.name': { $regex: /opening theory/i } })
+      .lean();
+    for (const doc of deepParents) {
+      for (const child of ((doc as any).children || []) as any[]) {
+        const matches = ((child as any).children || []).filter(
+          (c: any) => /opening theory/i.test(c.name),
+        );
+        for (const match of matches) {
+          for (const grandchild of ((match as any).children || []) as any[]) {
+            if (grandchild.name && !seenNames.has(grandchild.name)) {
+              seenNames.add(grandchild.name);
+              mergedChildren.push(grandchild);
+            }
+          }
+        }
+      }
+    }
+
+    if (mergedChildren.length === 0) {
+      return null;
+    }
+
+    // Return a synthetic merged root
+    return { name: 'Opening Theory (merged)', children: mergedChildren };
+  }
+
+  async getOpeningCategories(): Promise<{ categories: any[] }> {
+    const rootCategory = await this.findOpeningTheoryRoot();
+
+    if (!rootCategory || !rootCategory.children?.length) {
+      return { categories: [] };
+    }
+
+    const letterNames: Record<string, string> = {
+      A: 'Flank Openings',
+      B: 'Semi-Open Games',
+      C: 'Open Games',
+      D: 'Closed Games',
+      E: 'Indian Defences',
+    };
+
+    // Aggregate by letter (merged root may have duplicate letter categories)
+    const letterMap = new Map<string, { letter: string; name: string; count: number }>();
+
+    for (const child of (rootCategory.children as any[])) {
+      if (!/^[A-E]\b/i.test(child.name)) continue;
+      const letter = child.name.charAt(0).toUpperCase();
+      const count = this.countOpeningsWithPgn(child);
+      const existing = letterMap.get(letter);
+      if (existing) {
+        existing.count += count;
+      } else {
+        letterMap.set(letter, {
+          letter,
+          name: letterNames[letter] || child.name,
+          count,
+        });
+      }
+    }
+
+    const categories = [...letterMap.values()].sort((a, b) =>
+      a.letter.localeCompare(b.letter),
+    );
+
+    return { categories };
+  }
+
+  async getOpeningsByLetter(
+    letter: string,
+    page?: number,
+    pageSize?: number,
+  ): Promise<{ openings: any[]; total: number; page: number; pageSize: number; hasMore: boolean }> {
+    const upperLetter = letter?.toUpperCase();
+    if (!upperLetter || !/^[A-E]$/.test(upperLetter)) {
+      throw new BadRequestException('Letter must be A-E');
+    }
+
+    const rootCategory = await this.findOpeningTheoryRoot();
+
+    if (!rootCategory) {
+      return { openings: [], total: 0, page: page || 1, pageSize: pageSize || 0, hasMore: false };
+    }
+
+    // Walk the ENTIRE opening tree and filter by ECO prefix.
+    // E-prefix openings may be nested under the D category, so we
+    // cannot rely on category name matching — we must match by ECO code.
+    //
+    // Strategy: a node becomes a top-level opening if it has eco+pgn
+    // matching the requested letter. Its children with pgn become
+    // variations (not separate top-level entries). We only recurse
+    // into children to promote them if they DON'T have a parent with
+    // matching eco+pgn (i.e. they are structural grouping nodes).
+    const openings: any[] = [];
+    const seen = new Set<string>(); // dedupe by eco+name
+
+    const collectOpenings = (nodes: any[], parentHasEco: boolean) => {
+      for (const node of nodes) {
+        const matchesLetter = node.eco && node.pgn && node.eco.charAt(0).toUpperCase() === upperLetter;
+
+        if (matchesLetter && !parentHasEco) {
+          // This is a top-level opening (not already captured as a variation)
+          const key = node.eco + '|' + node.name;
+          if (!seen.has(key)) {
+            seen.add(key);
+
+            // Recursively collect ALL descendant variations
+            const variations: any[] = [];
+            const collectVariations = (children: any[]) => {
+              for (const v of children) {
+                if (v.pgn) {
+                  variations.push({
+                    eco: v.eco || node.eco,
+                    name: v.name || '',
+                    pgn: v.pgn || '',
+                  });
+                }
+                if (v.children && Array.isArray(v.children)) {
+                  collectVariations(v.children);
+                }
+              }
+            };
+            collectVariations(node.children || []);
+
+            openings.push({
+              eco: node.eco,
+              name: node.name || '',
+              pgn: node.pgn,
+              variations,
+            });
+          }
+          // Don't recurse further — children are captured as variations
+        } else if (node.children && Array.isArray(node.children)) {
+          // Node is either a structural grouping (no eco/pgn) or a parent
+          // that already captured this node as a variation — recurse
+          collectOpenings(node.children, matchesLetter || false);
+        }
+      }
+    };
+
+    // Walk all letter categories, not just the one matching by name
+    for (const letterCat of (rootCategory.children || []) as any[]) {
+      collectOpenings(letterCat.children || [], false);
+    }
+
+    // Post-process: remove openings that also appear as variations of another
+    // (can happen when the tree is duplicated across multiple document roots)
+    const variationKeys = new Set<string>();
+    for (const o of openings) {
+      for (const v of o.variations) {
+        variationKeys.add((v.eco || '') + '|' + (v.name || ''));
+      }
+    }
+    const deduped = openings.filter(
+      o => !variationKeys.has(o.eco + '|' + o.name),
+    );
+
+    // Sort by ECO code then name
+    deduped.sort((a, b) => a.eco.localeCompare(b.eco) || a.name.localeCompare(b.name));
+
+    // Paginate (when page/pageSize provided), otherwise return all
+    const total = deduped.length;
+    if (page && pageSize) {
+      const start = (page - 1) * pageSize;
+      const paged = deduped.slice(start, start + pageSize);
+      const hasMore = page * pageSize < total;
+      return { openings: paged, total, page, pageSize, hasMore };
+    }
+    return { openings: deduped, total, page: 1, pageSize: total, hasMore: false };
+  }
+
+  async searchOpenings(query: string, limit = 50): Promise<{ openings: any[] }> {
+    if (!query) {
+      return { openings: [] };
+    }
+
+    const rootCategory = await this.findOpeningTheoryRoot();
+
+    if (!rootCategory) {
+      return { openings: [] };
+    }
+
+    const results: any[] = [];
+    const queryLower = query.toLowerCase();
+
+    const searchChildren = (children: any[]) => {
+      if (!children || !Array.isArray(children)) return;
+      for (const child of children) {
+        if (results.length >= limit) return;
+        const nameMatch = child.name?.toLowerCase().includes(queryLower);
+        const ecoMatch =
+          child.eco?.toLowerCase() === queryLower ||
+          child.eco?.toLowerCase().startsWith(queryLower);
+        if ((nameMatch || ecoMatch) && child.pgn) {
+          results.push({
+            eco: child.eco || '',
+            name: child.name || '',
+            pgn: child.pgn || '',
+            isVariation: !!(child.parent && child.eco && child.name?.includes(':')),
+          });
+        }
+        searchChildren(child.children);
+      }
+    };
+
+    for (const letterCat of (rootCategory.children || []) as any[]) {
+      if (results.length >= limit) break;
+      searchChildren(letterCat.children || []);
+    }
+
+    return { openings: results };
+  }
+
+  private countOpeningsWithPgn(category: any): number {
+    let count = 0;
+    if (category.pgn) count++;
+    if (category.children && Array.isArray(category.children)) {
+      for (const child of category.children) {
+        count += this.countOpeningsWithPgn(child);
+      }
+    }
+    return count;
   }
 
   async getByLineOfService(id: string, body: any): Promise<any> {

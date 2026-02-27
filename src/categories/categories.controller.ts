@@ -38,6 +38,34 @@ export class CategoriesController {
     return this.categoryGridService.search(body.term || body.searchTerm);
   }
 
+  // ─── Opening-specific routes (must come before :id routes) ───
+
+  @Get('openings/categories')
+  @ApiOperation({ summary: 'Get opening categories (A-E) with counts' })
+  async getOpeningCategories() {
+    return this.categoriesService.getOpeningCategories();
+  }
+
+  @Get('openings/letter/:letter')
+  @ApiOperation({ summary: 'Get openings by ECO letter category (A-E) with pagination' })
+  async getOpeningsByLetter(
+    @Param('letter') letter: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.categoriesService.getOpeningsByLetter(
+      letter,
+      page ? parseInt(page, 10) : undefined,
+      pageSize ? parseInt(pageSize, 10) : undefined,
+    );
+  }
+
+  @Get('openings/search')
+  @ApiOperation({ summary: 'Search openings by name or ECO code' })
+  async searchOpenings(@Query('q') q: string, @Query('limit') limit?: string) {
+    return this.categoriesService.searchOpenings(q, limit ? parseInt(limit, 10) : undefined);
+  }
+
   @Get(':id/shallow-children')
   @ApiOperation({ summary: 'Get shallow children for lazy-loaded navigation (issue #80)' })
   async getShallowChildren(@Param('id') id: string) {

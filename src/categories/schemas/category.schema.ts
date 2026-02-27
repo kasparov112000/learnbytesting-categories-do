@@ -95,6 +95,8 @@ export interface ICategory {
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];
+  eco?: string;
+  pgn?: string;
 }
 
 export const CategorySchema = new Schema<ICategory>(
@@ -190,6 +192,8 @@ export const CategorySchema = new Schema<ICategory>(
         icon: { type: String },
       },
     ],
+    eco: { type: String },
+    pgn: { type: String },
   },
   {
     timestamps: true,
@@ -201,3 +205,4 @@ export const CategorySchema = new Schema<ICategory>(
 CategorySchema.index({ name: 1 });
 CategorySchema.index({ parent: 1 });
 CategorySchema.index({ isActive: 1 });
+CategorySchema.index({ eco: 1 }, { sparse: true });

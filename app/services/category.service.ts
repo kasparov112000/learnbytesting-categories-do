@@ -3092,4 +3092,191 @@ export class CategoryService extends DbMicroServiceBase {
       console.warn(`[Categories] Failed to persist translation: ${err.message}`);
     }
   }
+
+  // =============================================================================
+  // Opening-Specific Query Methods (Categories as single source of truth)
+  // =============================================================================
+
+  /**
+   * Get opening categories (A-E) with counts of openings that have pgn set.
+   * Returns data in the same shape as the chess-ai /openings/categories endpoint.
+   */
+  public async getOpeningCategories(req: Request, res: Response) {
+    try {
+      const { CategoryModel } = require('../models/category.model');
+
+      // Find "Opening Theory & Repertoire" root category
+      const rootCategory = await CategoryModel.findOne({
+        name: { $regex: /opening theory/i }
+      }).lean();
+
+      if (!rootCategory || !rootCategory.children?.length) {
+        return res.status(200).json({ categories: [] });
+      }
+
+      const letterNames: Record<string, string> = {
+        A: 'Flank Openings',
+        B: 'Semi-Open Games',
+        C: 'Open Games',
+        D: 'Closed Games',
+        E: 'Indian Defences'
+      };
+
+      const categories = rootCategory.children
+        .filter((child: any) => /^[A-E]\b/i.test(child.name))
+        .map((child: any) => {
+          const letter = child.name.charAt(0).toUpperCase();
+          const count = this.countOpeningsWithPgn(child);
+          return {
+            letter,
+            name: letterNames[letter] || child.name,
+            count
+          };
+        })
+        .sort((a: any, b: any) => a.letter.localeCompare(b.letter));
+
+      return res.status(200).json({ categories });
+    } catch (error) {
+      console.error('[CategoryService.getOpeningCategories] Error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Get openings by letter (A-E) as { eco, name, pgn, variations[] }.
+   * Returns data in the same shape as the chess-ai /openings/category/:letter endpoint.
+   */
+  public async getOpeningsByLetter(req: Request, res: Response) {
+    try {
+      const letter = req.params.letter?.toUpperCase();
+      if (!letter || !/^[A-E]$/.test(letter)) {
+        return res.status(400).json({ error: 'Letter must be A-E' });
+      }
+
+      const { CategoryModel } = require('../models/category.model');
+
+      // Find "Opening Theory & Repertoire" root, then the letter subcategory
+      const rootCategory = await CategoryModel.findOne({
+        name: { $regex: /opening theory/i }
+      }).lean();
+
+      if (!rootCategory) {
+        return res.status(200).json({ openings: [] });
+      }
+
+      const letterCategory = (rootCategory.children || []).find(
+        (child: any) => child.name?.charAt(0).toUpperCase() === letter
+      );
+
+      if (!letterCategory) {
+        return res.status(200).json({ openings: [] });
+      }
+
+      // Map children to opening format
+      const openings = (letterCategory.children || []).map((child: any) => {
+        const variations = (child.children || []).map((v: any) => ({
+          eco: v.eco || '',
+          name: v.name || '',
+          pgn: v.pgn || ''
+        }));
+
+        // If parent has no PGN, derive from shortest variation
+        let pgn = child.pgn || '';
+        if (!pgn && variations.length > 0) {
+          const withPgn = variations.filter((v: any) => v.pgn);
+          if (withPgn.length > 0) {
+            pgn = withPgn.reduce((shortest: any, v: any) =>
+              v.pgn.length < shortest.pgn.length ? v : shortest
+            ).pgn;
+          }
+        }
+
+        return {
+          eco: child.eco || '',
+          name: child.name || '',
+          pgn,
+          variations
+        };
+      });
+
+      return res.status(200).json({ openings });
+    } catch (error) {
+      console.error('[CategoryService.getOpeningsByLetter] Error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Search openings by name or eco code.
+   * Returns data in the same shape as the chess-ai /openings/search-all endpoint.
+   */
+  public async searchOpenings(req: Request, res: Response) {
+    try {
+      const query = (req.query.q as string || '').trim();
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+
+      if (!query) {
+        return res.status(200).json({ openings: [] });
+      }
+
+      const { CategoryModel } = require('../models/category.model');
+
+      // Find "Opening Theory & Repertoire" root
+      const rootCategory = await CategoryModel.findOne({
+        name: { $regex: /opening theory/i }
+      }).lean();
+
+      if (!rootCategory) {
+        return res.status(200).json({ openings: [] });
+      }
+
+      const results: any[] = [];
+      const queryLower = query.toLowerCase();
+
+      // Recursively search all descendants
+      const searchChildren = (children: any[]) => {
+        if (!children || !Array.isArray(children)) return;
+        for (const child of children) {
+          if (results.length >= limit) return;
+          const nameMatch = child.name?.toLowerCase().includes(queryLower);
+          const ecoMatch = child.eco?.toLowerCase() === queryLower
+            || child.eco?.toLowerCase().startsWith(queryLower);
+          if ((nameMatch || ecoMatch) && child.pgn) {
+            results.push({
+              eco: child.eco || '',
+              name: child.name || '',
+              pgn: child.pgn || '',
+              isVariation: !!(child.parent && child.eco && child.name?.includes(':'))
+            });
+          }
+          searchChildren(child.children);
+        }
+      };
+
+      // Search across all letter categories
+      for (const letterCat of (rootCategory.children || [])) {
+        if (results.length >= limit) break;
+        searchChildren(letterCat.children || []);
+      }
+
+      return res.status(200).json({ openings: results });
+    } catch (error) {
+      console.error('[CategoryService.searchOpenings] Error:', error);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+
+  /**
+   * Count descendants that have pgn set (i.e., actual opening entries).
+   */
+  private countOpeningsWithPgn(category: any): number {
+    let count = 0;
+    if (category.pgn) count++;
+    if (category.children && Array.isArray(category.children)) {
+      for (const child of category.children) {
+        count += this.countOpeningsWithPgn(child);
+      }
+    }
+    return count;
+  }
 }

@@ -139,6 +139,20 @@ export default function (app, express, serviceobject) {
     }
   });
 
+  // --- Opening-specific routes (Categories as single source of truth for chess openings) ---
+
+  router.get(`${baseUrl}/openings/categories`, (req, res) => {
+    serviceobject.getOpeningCategories(req, res);
+  });
+
+  router.get(`${baseUrl}/openings/letter/:letter`, (req, res) => {
+    serviceobject.getOpeningsByLetter(req, res);
+  });
+
+  router.get(`${baseUrl}/openings/search`, (req, res) => {
+    serviceobject.searchOpenings(req, res);
+  });
+
   // Specific named routes must come before the :id wildcard
   router.post(`${baseUrl}/query`, (req, res) => {
     serviceobject.getByCategory(req, res);

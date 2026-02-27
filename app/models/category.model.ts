@@ -105,6 +105,8 @@ export interface ICategory {
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];  // Menu items visible to users with this category
+  eco?: string;
+  pgn?: string;
   $getAllSubdocs: () => any[];
   $isDeleted: () => boolean;
   $isSaved: () => boolean;
@@ -194,6 +196,8 @@ const CategorySchema = new Schema<ICategory>(
         icon: { type: String }
       }
     ],
+    eco: { type: String },
+    pgn: { type: String },
   },
   {
     timestamps: true,
@@ -205,6 +209,7 @@ const CategorySchema = new Schema<ICategory>(
 CategorySchema.index({ name: 1 });
 CategorySchema.index({ parent: 1 });
 CategorySchema.index({ isActive: 1 });
+CategorySchema.index({ eco: 1 }, { sparse: true });
 
 export const CategoryModel = model<ICategory>('Categories', CategorySchema);
 
@@ -223,6 +228,8 @@ export class Category implements ICategory {
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];
+  eco?: string;
+  pgn?: string;
 
   constructor(data: Partial<ICategory>) {
     this._id = data._id || '';
@@ -239,6 +246,8 @@ export class Category implements ICategory {
     this.customFields = data.customFields || [];
     this.aiConfig = data.aiConfig;
     this.visibleMenuItems = data.visibleMenuItems || [];
+    this.eco = data.eco;
+    this.pgn = data.pgn;
   }
 
   $getAllSubdocs() {
