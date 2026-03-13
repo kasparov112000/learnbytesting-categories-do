@@ -29,20 +29,22 @@ export class CategoryTreeService {
   /**
    * Flatten a nested category tree into a flat array with breadcrumb paths
    */
-  flattenNestedStructure(categories: any[], parentPath = ''): any[] {
+  flattenNestedStructure(categories: any[], parentPath = '', parentIds: Array<{_id: string; name: string}> = []): any[] {
     const result: any[] = [];
 
     for (const category of categories) {
       const breadcrumb = parentPath ? `${parentPath} > ${category.name}` : category.name;
+      const breadcrumbPath = [...parentIds, { _id: String(category._id), name: category.name }];
 
       result.push({
         ...category,
         breadcrumb,
+        breadcrumbPath,
         depth: parentPath ? parentPath.split(' > ').length : 0,
       });
 
       if (category.children && category.children.length > 0) {
-        result.push(...this.flattenNestedStructure(category.children, breadcrumb));
+        result.push(...this.flattenNestedStructure(category.children, breadcrumb, breadcrumbPath));
       }
     }
 

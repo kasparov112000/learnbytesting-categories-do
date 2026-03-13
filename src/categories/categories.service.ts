@@ -82,6 +82,7 @@ export class CategoriesService {
       childrenCount: Array.isArray(child.children) ? child.children.length : 0,
       ...(child.eco && { eco: child.eco }),
       ...(child.pgn && { pgn: child.pgn }),
+      ...(child.tags?.length && { tags: child.tags }),
     }));
 
     return { result: shallowChildren, parentName: found.name };
@@ -499,80 +500,37 @@ export class CategoriesService {
       return { openings: [], total: 0, page: page || 1, pageSize: pageSize || 0, hasMore: false };
     }
 
-    // Walk the ENTIRE opening tree and filter by ECO prefix.
-    // E-prefix openings may be nested under the D category, so we
-    // cannot rely on category name matching — we must match by ECO code.
-    //
-    // Strategy: a node becomes a top-level opening if it has eco+pgn
-    // matching the requested letter. Its children with pgn become
-    // variations (not separate top-level entries). We only recurse
-    // into children to promote them if they DON'T have a parent with
-    // matching eco+pgn (i.e. they are structural grouping nodes).
+    // Flatten ALL openings with eco+pgn matching the requested letter
+    // into a single list. The frontend renders each as a card in a grid.
     const openings: any[] = [];
     const seen = new Set<string>(); // dedupe by eco+name
 
-    const collectOpenings = (nodes: any[], parentHasEco: boolean) => {
+    const collectOpenings = (nodes: any[]) => {
       for (const node of nodes) {
-        const matchesLetter = node.eco && node.pgn && node.eco.charAt(0).toUpperCase() === upperLetter;
-
-        if (matchesLetter && !parentHasEco) {
-          // This is a top-level opening (not already captured as a variation)
+        if (node.eco && node.pgn && node.eco.charAt(0).toUpperCase() === upperLetter) {
           const key = node.eco + '|' + node.name;
           if (!seen.has(key)) {
             seen.add(key);
-
-            // Recursively collect ALL descendant variations
-            const variations: any[] = [];
-            const collectVariations = (children: any[]) => {
-              for (const v of children) {
-                if (v.pgn) {
-                  variations.push({
-                    eco: v.eco || node.eco,
-                    name: v.name || '',
-                    pgn: v.pgn || '',
-                  });
-                }
-                if (v.children && Array.isArray(v.children)) {
-                  collectVariations(v.children);
-                }
-              }
-            };
-            collectVariations(node.children || []);
-
             openings.push({
               eco: node.eco,
               name: node.name || '',
               pgn: node.pgn,
-              variations,
             });
           }
-          // Don't recurse further — children are captured as variations
-        } else if (node.children && Array.isArray(node.children)) {
-          // Node is either a structural grouping (no eco/pgn) or a parent
-          // that already captured this node as a variation — recurse
-          collectOpenings(node.children, matchesLetter || false);
+        }
+        if (node.children && Array.isArray(node.children)) {
+          collectOpenings(node.children);
         }
       }
     };
 
-    // Walk all letter categories, not just the one matching by name
+    // Walk all letter categories (E-prefix openings may be under D category)
     for (const letterCat of (rootCategory.children || []) as any[]) {
-      collectOpenings(letterCat.children || [], false);
+      collectOpenings(letterCat.children || []);
     }
-
-    // Post-process: remove openings that also appear as variations of another
-    // (can happen when the tree is duplicated across multiple document roots)
-    const variationKeys = new Set<string>();
-    for (const o of openings) {
-      for (const v of o.variations) {
-        variationKeys.add((v.eco || '') + '|' + (v.name || ''));
-      }
-    }
-    const deduped = openings.filter(
-      o => !variationKeys.has(o.eco + '|' + o.name),
-    );
 
     // Sort by ECO code then name
+    const deduped = openings;
     deduped.sort((a, b) => a.eco.localeCompare(b.eco) || a.name.localeCompare(b.name));
 
     // Paginate (when page/pageSize provided), otherwise return all
@@ -649,5 +607,159 @@ export class CategoriesService {
     // TODO: Migrate complex filtering logic from old CategoryService.filterByCategory2
     const categories = await this.categoryModel.find().lean();
     return { result: categories, count: categories.length };
+  }
+
+  /**
+   * Get all distinct tags across categories (including nested children).
+   * When parentId is provided, only collect tags from that category's subtree.
+   */
+  async getDistinctTags(parentId?: string): Promise<{ result: string[] }> {
+    const tagSet = new Set<string>();
+
+    const collectTags = (categories: any[]) => {
+      for (const cat of categories) {
+        if (cat.tags && Array.isArray(cat.tags)) {
+          cat.tags.forEach((tag: string) => tagSet.add(tag));
+        }
+        if (cat.children && Array.isArray(cat.children)) {
+          collectTags(cat.children);
+        }
+      }
+    };
+
+    if (parentId) {
+      const parent = await this.categoryModel.findById(this.coerceId(parentId)).lean();
+      if (parent) {
+        collectTags(parent.children || []);
+      }
+    } else {
+      const allCategories = await this.categoryModel.find().lean();
+      collectTags(allCategories);
+    }
+
+    return { result: Array.from(tagSet).sort() };
+  }
+
+  /**
+   * Get all categories (including nested) matching a given tag.
+   */
+  /**
+   * Find categories by their IDs anywhere in the tree.
+   * Returns lightweight objects with _id, name, and breadcrumb path.
+   */
+  async findByIds(ids: string[]): Promise<{ result: { _id: string; name: string; breadcrumb: string; childrenCount: number }[] }> {
+    if (!ids || ids.length === 0) {
+      return { result: [] };
+    }
+
+    const idSet = new Set(ids.map(String));
+    const found: { _id: string; name: string; breadcrumb: string; childrenCount: number }[] = [];
+
+    const allRoots = await this.categoryModel.find().lean();
+
+    const walk = (cats: any[], path: string[]) => {
+      for (const cat of cats || []) {
+        const catId = cat._id ? String(cat._id) : '';
+        const currentPath = [...path, cat.name || ''];
+        if (catId && idSet.has(catId)) {
+          found.push({
+            _id: catId,
+            name: cat.name || '',
+            breadcrumb: currentPath.join(' > '),
+            childrenCount: Array.isArray(cat.children) ? cat.children.length : 0,
+          });
+        }
+        if (cat.children?.length) {
+          walk(cat.children, currentPath);
+        }
+      }
+    };
+
+    for (const root of allRoots) {
+      const rootId = root._id ? String(root._id) : '';
+      if (rootId && idSet.has(rootId)) {
+        found.push({
+          _id: rootId,
+          name: root.name || '',
+          breadcrumb: root.name || '',
+          childrenCount: Array.isArray((root as any).children) ? (root as any).children.length : 0,
+        });
+      }
+      if ((root as any).children?.length) {
+        walk((root as any).children, [root.name || '']);
+      }
+    }
+
+    return { result: found };
+  }
+
+  async getByTag(tag: string): Promise<{ result: any[]; count: number }> {
+    const allCategories = await this.categoryModel.find().lean();
+    const matched: any[] = [];
+
+    const searchByTag = (categories: any[]) => {
+      for (const cat of categories) {
+        if (cat.tags && Array.isArray(cat.tags) && cat.tags.includes(tag)) {
+          matched.push({
+            _id: cat._id,
+            name: cat.name,
+            eco: cat.eco,
+            tags: cat.tags,
+            childrenCount: Array.isArray(cat.children) ? cat.children.length : 0,
+            isActive: cat.isActive,
+          });
+        }
+        if (cat.children && Array.isArray(cat.children)) {
+          searchByTag(cat.children);
+        }
+      }
+    };
+
+    searchByTag(allCategories);
+    return { result: matched, count: matched.length };
+  }
+
+  /**
+   * Update tags for a category at any nesting level.
+   */
+  async updateTags(id: string, tags: string[]): Promise<any> {
+    const allCategories = await this.categoryModel.find().lean();
+
+    // Try root-level first
+    const rootCategory = allCategories.find((c: any) => c._id?.toString() === id);
+    if (rootCategory) {
+      const updated = await this.categoryModel.findByIdAndUpdate(
+        this.coerceId(id),
+        { $set: { tags } },
+        { new: true },
+      ).lean();
+      return { result: updated };
+    }
+
+    // Search in nested children
+    for (const root of allCategories) {
+      const updateInChildren = (children: any[]): boolean => {
+        if (!children || !Array.isArray(children)) return false;
+        for (const child of children) {
+          if (child._id?.toString() === id) {
+            child.tags = tags;
+            return true;
+          }
+          if (child.children && updateInChildren(child.children)) return true;
+        }
+        return false;
+      };
+
+      if (updateInChildren(root.children || [])) {
+        await this.categoryModel.findByIdAndUpdate(
+          root._id,
+          { $set: { children: root.children } },
+          { new: true },
+        );
+        return { result: { _id: id, tags } };
+      }
+    }
+
+    throw new NotFoundException(`Category with ID ${id} not found`);
   }
 }

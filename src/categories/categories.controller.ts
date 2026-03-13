@@ -33,9 +33,13 @@ export class CategoriesController {
   }
 
   @Post('search')
-  @ApiOperation({ summary: 'Search categories by name' })
+  @ApiOperation({ summary: 'Search categories by name, optionally scoped to a category subtree' })
   async search(@Body() body: any) {
-    return this.categoryGridService.search(body.term || body.searchTerm);
+    return this.categoryGridService.search(
+      body.search || body.term || body.searchTerm,
+      body.rootId,
+      body.scopeName,
+    );
   }
 
   // ─── Opening-specific routes (must come before :id routes) ───
@@ -126,6 +130,24 @@ export class CategoriesController {
     return this.categoriesService.createCategory(body, req);
   }
 
+  @Post('by-ids')
+  @ApiOperation({ summary: 'Find categories by IDs (deep tree search)' })
+  async findByIds(@Body() body: { ids: string[] }) {
+    return this.categoriesService.findByIds(body.ids || []);
+  }
+
+  @Get('tags')
+  @ApiOperation({ summary: 'Get distinct tags across categories. Use ?parentId= to scope to a subtree.' })
+  async getTags(@Query('parentId') parentId?: string) {
+    return this.categoriesService.getDistinctTags(parentId);
+  }
+
+  @Get('by-tag/:tag')
+  @ApiOperation({ summary: 'Get categories matching a tag' })
+  async getByTag(@Param('tag') tag: string) {
+    return this.categoriesService.getByTag(tag);
+  }
+
   @Get('find/:id')
   @ApiOperation({ summary: 'Find category anywhere in the tree' })
   async findInTree(@Param('id') id: string) {
@@ -148,6 +170,12 @@ export class CategoriesController {
   @ApiOperation({ summary: 'Get by line of service' })
   async getByLineOfService(@Param('id') id: string, @Body() body: any) {
     return this.categoriesService.getByLineOfService(id, body);
+  }
+
+  @Put(':id/tags')
+  @ApiOperation({ summary: 'Update tags for a category' })
+  async updateTags(@Param('id') id: string, @Body() body: any) {
+    return this.categoriesService.updateTags(id, body.tags || []);
   }
 
   @Put(':id')

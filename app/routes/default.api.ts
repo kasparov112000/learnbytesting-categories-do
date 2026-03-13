@@ -61,6 +61,11 @@ export default function (app, express, serviceobject) {
     serviceobject.createCategory(req, res);
   });
 
+  // Find multiple categories by IDs (for favorites resolution)
+  router.post(`${baseUrl}/by-ids`, (req, res) => {
+    serviceobject.findCategoriesByIds(req, res);
+  });
+
   // Find a category anywhere in the tree by ID (includes nested categories)
   router.get(`${baseUrl}/find/:id`, (req, res) => {
     console.log("ROUTE HIT: GET /categories/find/:id");
@@ -106,6 +111,29 @@ export default function (app, express, serviceobject) {
     serviceobject.ensureSubcategory(req, res);
   });
 
+  // Get distinct tags across categories (optionally scoped by parentId)
+  router.get(`${baseUrl}/tags`, async (req, res) => {
+    try {
+      const parentId = req.query.parentId as string | undefined;
+      const tags = await serviceobject.getDistinctTags(parentId);
+      res.json({ result: tags });
+    } catch (error) {
+      console.error('Error getting distinct tags:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all categories matching a tag
+  router.get(`${baseUrl}/by-tag/:tag`, async (req, res) => {
+    try {
+      const categories = await serviceobject.getByTag(req.params.tag);
+      res.json({ result: categories, count: categories.length });
+    } catch (error) {
+      console.error('Error getting categories by tag:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Get categories with translated names
   router.get(`${baseUrl}/translated`, async (req, res) => {
     try {
@@ -139,20 +167,6 @@ export default function (app, express, serviceobject) {
     }
   });
 
-  // --- Opening-specific routes (Categories as single source of truth for chess openings) ---
-
-  router.get(`${baseUrl}/openings/categories`, (req, res) => {
-    serviceobject.getOpeningCategories(req, res);
-  });
-
-  router.get(`${baseUrl}/openings/letter/:letter`, (req, res) => {
-    serviceobject.getOpeningsByLetter(req, res);
-  });
-
-  router.get(`${baseUrl}/openings/search`, (req, res) => {
-    serviceobject.searchOpenings(req, res);
-  });
-
   // Specific named routes must come before the :id wildcard
   router.post(`${baseUrl}/query`, (req, res) => {
     serviceobject.getByCategory(req, res);
@@ -161,6 +175,17 @@ export default function (app, express, serviceobject) {
   // Wildcard :id route - must be last among POST routes
   router.post(`${baseUrl}/:id`, (req, res) => {
     serviceobject.getByLineOfService(req, res);
+  });
+
+  // Update tags for a category
+  router.put(`${baseUrl}/:id/tags`, async (req, res) => {
+    try {
+      const result = await serviceobject.updateTags(req.params.id, req.body.tags || []);
+      res.json({ result });
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   router.put(`${baseUrl}/:id`, (req, res) => {

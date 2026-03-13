@@ -400,17 +400,60 @@ export class CategoryService extends DbMicroServiceBase {
   }
 
   public async search(req, res) {
-    let results = await this.dbService.findAll();
-    results = results.map((category) => this.buildBreadCrumb(category));
-    let allCategories = this.flattenNestedStructure(results);
+    try {
+      console.log('[SEARCH] === SEARCH REQUEST ===');
+      console.log('[SEARCH] req.body:', JSON.stringify(req.body));
+      // Handle both direct body and session-wrapped body
+      const searchText = req.body?.search || req.body?.session?.body?.search;
+      console.log('[SEARCH] searchText:', searchText);
 
-    const searchText = req.body.search;
+      if (!searchText) {
+        console.log('[SEARCH] No searchText found, returning empty');
+        return res.status(200).json({ result: [], count: 0 });
+      }
 
-    const response = allCategories.filter((category) => {
-      return category.name.toLowerCase().includes(searchText.toLowerCase());
-    });
+      console.log('[SEARCH] Step 1: Calling findAll...');
+      let results = await this.dbService.findAll();
+      console.log('[SEARCH] Step 2: findAll returned', results?.length || 0, 'root categories');
 
-    return res.status(200).json(response);
+      if (!results || results.length === 0) {
+        console.log('[SEARCH] No categories in database!');
+        return res.status(200).json({ result: [], count: 0 });
+      }
+
+      // Log first category structure to understand data shape
+      console.log('[SEARCH] Step 3: First category sample:', {
+        name: results[0]?.name,
+        hasChildren: !!results[0]?.children,
+        childrenCount: results[0]?.children?.length || 0
+      });
+
+      console.log('[SEARCH] Step 4: Flattening nested structure...');
+      let allCategories = this.flattenNestedStructure(results);
+      console.log('[SEARCH] Step 5: Flattened to', allCategories.length, 'total categories');
+
+      // Log a few sample names to verify data
+      if (allCategories.length > 0) {
+        const sampleNames = allCategories.slice(0, 5).map(c => c.name);
+        console.log('[SEARCH] Sample names:', sampleNames);
+      }
+
+      const searchLower = searchText.toLowerCase();
+      const filtered = allCategories.filter((category) => {
+        return category.name && category.name.toLowerCase().includes(searchLower);
+      });
+
+      console.log('[SEARCH] Step 6: Found', filtered.length, 'results for:', searchText);
+      if (filtered.length > 0) {
+        console.log('[SEARCH] First match:', filtered[0].name, '- breadcrumb:', filtered[0].breadcrumb);
+      }
+      return res.status(200).json({ result: filtered, count: filtered.length });
+    } catch (error) {
+      console.error('[SEARCH] ERROR:', error.message);
+      console.error('[SEARCH] Stack:', error.stack);
+      // Return error info in development to help debug
+      return res.status(200).json({ result: [], count: 0, error: error.message });
+    }
   }
 
   public sliceArray(items: [], start: number, end: number) {
@@ -839,6 +882,53 @@ export class CategoryService extends DbMicroServiceBase {
         message: "An error occurred while finding category",
         error: error.message
       });
+    }
+  }
+
+  /**
+   * Find multiple categories by their IDs anywhere in the tree.
+   * POST /categories/by-ids  body: { ids: string[] }
+   * Returns an array of { _id, name, breadcrumb } for each found category.
+   */
+  public async findCategoriesByIds(req, res) {
+    const ids: string[] = req.body?.ids || [];
+    if (!ids.length) {
+      return res.json({ result: [] });
+    }
+
+    try {
+      const { CategoryModel } = require('../models/category.model');
+      const allRoots = await CategoryModel.find({}).lean();
+      const idSet = new Set(ids.map(String));
+      const found: { _id: string; name: string; breadcrumb: string }[] = [];
+
+      const walk = (cats: any[], path: string[]) => {
+        for (const cat of (cats || [])) {
+          const catId = cat._id ? String(cat._id) : '';
+          const currentPath = [...path, cat.name || ''];
+          if (catId && idSet.has(catId)) {
+            found.push({ _id: catId, name: cat.name || '', breadcrumb: currentPath.join(' > ') });
+          }
+          if (cat.children?.length) {
+            walk(cat.children, currentPath);
+          }
+        }
+      };
+
+      for (const root of allRoots) {
+        const rootId = root._id ? String(root._id) : '';
+        if (rootId && idSet.has(rootId)) {
+          found.push({ _id: rootId, name: root.name || '', breadcrumb: root.name || '' });
+        }
+        if (root.children?.length) {
+          walk(root.children, [root.name || '']);
+        }
+      }
+
+      return res.json({ result: found });
+    } catch (error) {
+      console.error('Error finding categories by IDs:', error);
+      return res.status(500).json({ error: error.message });
     }
   }
 
@@ -1336,6 +1426,8 @@ export class CategoryService extends DbMicroServiceBase {
         modifiedDate: node.modifiedDate,
         createUuid: node.createUuid,
         parent: node.parent,
+        pgn: node.pgn,
+        childrenCount: node.children?.length || 0,
         breadcrumb: parentPath ? `${parentPath} > ${node.name}` : node.name
       };
 
@@ -3093,190 +3185,112 @@ export class CategoryService extends DbMicroServiceBase {
     }
   }
 
-  // =============================================================================
-  // Opening-Specific Query Methods (Categories as single source of truth)
-  // =============================================================================
-
   /**
-   * Get opening categories (A-E) with counts of openings that have pgn set.
-   * Returns data in the same shape as the chess-ai /openings/categories endpoint.
+   * Get distinct tags across categories (including nested children).
+   * When parentId is provided, only collect tags from that category's subtree.
    */
-  public async getOpeningCategories(req: Request, res: Response) {
-    try {
-      const { CategoryModel } = require('../models/category.model');
+  public async getDistinctTags(parentId?: string): Promise<string[]> {
+    const tagSet = new Set<string>();
 
-      // Find "Opening Theory & Repertoire" root category
-      const rootCategory = await CategoryModel.findOne({
-        name: { $regex: /opening theory/i }
-      }).lean();
-
-      if (!rootCategory || !rootCategory.children?.length) {
-        return res.status(200).json({ categories: [] });
-      }
-
-      const letterNames: Record<string, string> = {
-        A: 'Flank Openings',
-        B: 'Semi-Open Games',
-        C: 'Open Games',
-        D: 'Closed Games',
-        E: 'Indian Defences'
-      };
-
-      const categories = rootCategory.children
-        .filter((child: any) => /^[A-E]\b/i.test(child.name))
-        .map((child: any) => {
-          const letter = child.name.charAt(0).toUpperCase();
-          const count = this.countOpeningsWithPgn(child);
-          return {
-            letter,
-            name: letterNames[letter] || child.name,
-            count
-          };
-        })
-        .sort((a: any, b: any) => a.letter.localeCompare(b.letter));
-
-      return res.status(200).json({ categories });
-    } catch (error) {
-      console.error('[CategoryService.getOpeningCategories] Error:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  }
-
-  /**
-   * Get openings by letter (A-E) as { eco, name, pgn, variations[] }.
-   * Returns data in the same shape as the chess-ai /openings/category/:letter endpoint.
-   */
-  public async getOpeningsByLetter(req: Request, res: Response) {
-    try {
-      const letter = req.params.letter?.toUpperCase();
-      if (!letter || !/^[A-E]$/.test(letter)) {
-        return res.status(400).json({ error: 'Letter must be A-E' });
-      }
-
-      const { CategoryModel } = require('../models/category.model');
-
-      // Find "Opening Theory & Repertoire" root, then the letter subcategory
-      const rootCategory = await CategoryModel.findOne({
-        name: { $regex: /opening theory/i }
-      }).lean();
-
-      if (!rootCategory) {
-        return res.status(200).json({ openings: [] });
-      }
-
-      const letterCategory = (rootCategory.children || []).find(
-        (child: any) => child.name?.charAt(0).toUpperCase() === letter
-      );
-
-      if (!letterCategory) {
-        return res.status(200).json({ openings: [] });
-      }
-
-      // Map children to opening format
-      const openings = (letterCategory.children || []).map((child: any) => {
-        const variations = (child.children || []).map((v: any) => ({
-          eco: v.eco || '',
-          name: v.name || '',
-          pgn: v.pgn || ''
-        }));
-
-        // If parent has no PGN, derive from shortest variation
-        let pgn = child.pgn || '';
-        if (!pgn && variations.length > 0) {
-          const withPgn = variations.filter((v: any) => v.pgn);
-          if (withPgn.length > 0) {
-            pgn = withPgn.reduce((shortest: any, v: any) =>
-              v.pgn.length < shortest.pgn.length ? v : shortest
-            ).pgn;
-          }
+    const collectTags = (categories: any[]) => {
+      for (const cat of categories) {
+        if (cat.tags && Array.isArray(cat.tags)) {
+          cat.tags.forEach((tag: string) => tagSet.add(tag));
         }
+        if (cat.children && Array.isArray(cat.children)) {
+          collectTags(cat.children);
+        }
+      }
+    };
 
-        return {
-          eco: child.eco || '',
-          name: child.name || '',
-          pgn,
-          variations
-        };
-      });
-
-      return res.status(200).json({ openings });
-    } catch (error) {
-      console.error('[CategoryService.getOpeningsByLetter] Error:', error);
-      return res.status(500).json({ error: error.message });
+    if (parentId) {
+      const parent = await (this.dbService as any).dbModel.findById(parentId).lean();
+      if (parent) {
+        collectTags(parent.children || []);
+      }
+    } else {
+      const allCategories = await (this.dbService as any).dbModel.find().lean();
+      collectTags(allCategories);
     }
+
+    return Array.from(tagSet).sort();
   }
 
   /**
-   * Search openings by name or eco code.
-   * Returns data in the same shape as the chess-ai /openings/search-all endpoint.
+   * Get all categories (including nested) matching a given tag.
+   * Returns shallow category info: _id, name, eco, tags, childrenCount.
    */
-  public async searchOpenings(req: Request, res: Response) {
-    try {
-      const query = (req.query.q as string || '').trim();
-      const limit = parseInt(req.query.limit as string, 10) || 50;
+  public async getByTag(tag: string): Promise<any[]> {
+    const allCategories = await (this.dbService as any).dbModel.find().lean();
+    const matched: any[] = [];
 
-      if (!query) {
-        return res.status(200).json({ openings: [] });
+    const searchByTag = (categories: any[]) => {
+      for (const cat of categories) {
+        if (cat.tags && Array.isArray(cat.tags) && cat.tags.includes(tag)) {
+          matched.push({
+            _id: cat._id,
+            name: cat.name,
+            eco: cat.eco,
+            tags: cat.tags,
+            childrenCount: Array.isArray(cat.children) ? cat.children.length : 0,
+            isActive: cat.isActive,
+          });
+        }
+        if (cat.children && Array.isArray(cat.children)) {
+          searchByTag(cat.children);
+        }
       }
+    };
 
-      const { CategoryModel } = require('../models/category.model');
+    searchByTag(allCategories);
+    return matched;
+  }
 
-      // Find "Opening Theory & Repertoire" root
-      const rootCategory = await CategoryModel.findOne({
-        name: { $regex: /opening theory/i }
-      }).lean();
+  /**
+   * Update tags for a category at any nesting level.
+   * Finds the category in the tree and updates its tags array.
+   */
+  public async updateTags(id: string, tags: string[]): Promise<any> {
+    const allCategories = await (this.dbService as any).dbModel.find().lean();
 
-      if (!rootCategory) {
-        return res.status(200).json({ openings: [] });
-      }
+    // Try root-level first
+    const rootCategory = allCategories.find((c: any) => c._id?.toString() === id);
+    if (rootCategory) {
+      const updated = await (this.dbService as any).dbModel.findByIdAndUpdate(
+        id,
+        { $set: { tags } },
+        { new: true }
+      ).lean();
+      return updated;
+    }
 
-      const results: any[] = [];
-      const queryLower = query.toLowerCase();
-
-      // Recursively search all descendants
-      const searchChildren = (children: any[]) => {
-        if (!children || !Array.isArray(children)) return;
+    // Search in nested children
+    for (const root of allCategories) {
+      const updateInChildren = (children: any[]): boolean => {
+        if (!children || !Array.isArray(children)) return false;
         for (const child of children) {
-          if (results.length >= limit) return;
-          const nameMatch = child.name?.toLowerCase().includes(queryLower);
-          const ecoMatch = child.eco?.toLowerCase() === queryLower
-            || child.eco?.toLowerCase().startsWith(queryLower);
-          if ((nameMatch || ecoMatch) && child.pgn) {
-            results.push({
-              eco: child.eco || '',
-              name: child.name || '',
-              pgn: child.pgn || '',
-              isVariation: !!(child.parent && child.eco && child.name?.includes(':'))
-            });
+          if (child._id?.toString() === id) {
+            child.tags = tags;
+            return true;
           }
-          searchChildren(child.children);
+          if (child.children && updateInChildren(child.children)) {
+            return true;
+          }
         }
+        return false;
       };
 
-      // Search across all letter categories
-      for (const letterCat of (rootCategory.children || [])) {
-        if (results.length >= limit) break;
-        searchChildren(letterCat.children || []);
-      }
-
-      return res.status(200).json({ openings: results });
-    } catch (error) {
-      console.error('[CategoryService.searchOpenings] Error:', error);
-      return res.status(500).json({ error: error.message });
-    }
-  }
-
-  /**
-   * Count descendants that have pgn set (i.e., actual opening entries).
-   */
-  private countOpeningsWithPgn(category: any): number {
-    let count = 0;
-    if (category.pgn) count++;
-    if (category.children && Array.isArray(category.children)) {
-      for (const child of category.children) {
-        count += this.countOpeningsWithPgn(child);
+      if (updateInChildren(root.children || [])) {
+        await (this.dbService as any).dbModel.findByIdAndUpdate(
+          root._id,
+          { $set: { children: root.children } },
+          { new: true }
+        );
+        return { _id: id, tags };
       }
     }
-    return count;
+
+    throw new Error(`Category with ID ${id} not found`);
   }
+
 }

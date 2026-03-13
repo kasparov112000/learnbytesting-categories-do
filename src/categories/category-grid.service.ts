@@ -79,13 +79,39 @@ export class CategoryGridService {
     return { rows, lastRow: totalCount };
   }
 
-  async search(term: string): Promise<any> {
+  async search(term: string, rootId?: string, scopeName?: string): Promise<any> {
     if (!term || term.length < 2) {
       return { result: [], count: 0 };
     }
 
-    const categories = await this.categoryModel.find().lean();
-    const flattened = this.treeService.flattenNestedStructure(categories);
+    const allCategories = await this.categoryModel.find().lean();
+    let categoriesToSearch: any[];
+
+    if (scopeName) {
+      // Find all subtrees matching the scope name (e.g. "Chess") across all roots
+      const subtrees: any[] = [];
+      const findByName = (nodes: any[]) => {
+        for (const node of nodes) {
+          if (node.name === scopeName) {
+            subtrees.push(node);
+          }
+          if (node.children && node.children.length > 0) {
+            findByName(node.children);
+          }
+        }
+      };
+      findByName(allCategories);
+      categoriesToSearch = subtrees;
+    } else if (rootId) {
+      const root = allCategories.find(
+        (c: any) => String(c._id) === String(rootId),
+      );
+      categoriesToSearch = root ? [root] : allCategories;
+    } else {
+      categoriesToSearch = allCategories;
+    }
+
+    const flattened = this.treeService.flattenNestedStructure(categoriesToSearch);
 
     const regex = new RegExp(term, 'i');
     const matches = flattened.filter((cat: any) => regex.test(cat.name));

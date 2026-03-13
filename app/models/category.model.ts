@@ -105,6 +105,7 @@ export interface ICategory {
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];  // Menu items visible to users with this category
+  tags?: string[];
   eco?: string;
   pgn?: string;
   $getAllSubdocs: () => any[];
@@ -196,6 +197,7 @@ const CategorySchema = new Schema<ICategory>(
         icon: { type: String }
       }
     ],
+    tags: [{ type: String }],
     eco: { type: String },
     pgn: { type: String },
   },
@@ -210,6 +212,7 @@ CategorySchema.index({ name: 1 });
 CategorySchema.index({ parent: 1 });
 CategorySchema.index({ isActive: 1 });
 CategorySchema.index({ eco: 1 }, { sparse: true });
+CategorySchema.index({ tags: 1 }, { sparse: true });
 
 export const CategoryModel = model<ICategory>('Categories', CategorySchema);
 
@@ -228,6 +231,7 @@ export class Category implements ICategory {
   customFields?: CustomFieldConfig[];
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];
+  tags?: string[];
   eco?: string;
   pgn?: string;
 
@@ -246,6 +250,7 @@ export class Category implements ICategory {
     this.customFields = data.customFields || [];
     this.aiConfig = data.aiConfig;
     this.visibleMenuItems = data.visibleMenuItems || [];
+    this.tags = data.tags || [];
     this.eco = data.eco;
     this.pgn = data.pgn;
   }
