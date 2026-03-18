@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CategoriesModule } from './categories/categories.module';
 import { TrapsModule } from './traps/traps.module';
+import { ExpertiseLevelsModule } from './expertise-levels/expertise-levels.module';
 import { TranslationModule } from './translation/translation.module';
 import { HealthModule } from './health/health.module';
 
@@ -59,6 +60,7 @@ import { HealthModule } from './health/health.module';
     }),
     CategoriesModule,
     TrapsModule,
+    ExpertiseLevelsModule,
     TranslationModule,
     HealthModule,
   ],
