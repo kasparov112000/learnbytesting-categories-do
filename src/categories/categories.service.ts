@@ -30,8 +30,13 @@ export class CategoriesService {
 
   async getAll(query?: Record<string, any>): Promise<{ result: any[]; count: number }> {
     this.logger.log('Getting all categories');
+    const lang = query?.lang;
+
     if (query?.all === 'true') {
       const result = await this.categoryModel.find().select('-children').lean();
+      if (lang && lang !== 'en') {
+        this.translateCategories(result, lang);
+      }
       return { result, count: result.length };
     }
     // Return main categories with shallow children (name, _id, childrenCount only).
@@ -48,8 +53,11 @@ export class CategoriesService {
               as: 'child',
               in: {
                 _id: '$$child._id',
-                name: '$$child.name',
+                name: lang && lang !== 'en'
+                  ? { $ifNull: [`$$child.translations.${lang}`, '$$child.name'] }
+                  : '$$child.name',
                 isActive: '$$child.isActive',
+                icon: '$$child.icon',
                 childrenCount: { $size: { $ifNull: ['$$child.children', []] } },
               },
             },
@@ -57,7 +65,22 @@ export class CategoriesService {
         },
       },
     ]);
+    // Translate parent category names
+    if (lang && lang !== 'en') {
+      this.translateCategories(result, lang);
+    }
     return { result, count: result.length };
+  }
+
+  /**
+   * Translate category names in-place using translations field.
+   */
+  private translateCategories(categories: any[], lang: string): void {
+    for (const cat of categories) {
+      if (cat.translations?.[lang]) {
+        cat.name = cat.translations[lang];
+      }
+    }
   }
 
   /**
@@ -66,7 +89,7 @@ export class CategoriesService {
    * Used by the frontend for lazy-loaded drill-down navigation.
    * See: https://github.com/kasparov112000/learnbytesting-ai/issues/80
    */
-  async getShallowChildren(id: string): Promise<{ result: any[]; parentName: string }> {
+  async getShallowChildren(id: string, lang?: string): Promise<{ result: any[]; parentName: string }> {
     this.logger.log(`Getting shallow children for category: ${id}`);
     const allCategories = await this.categoryModel.find().lean();
     const found = this.treeService.findInTree(allCategories, id);
@@ -75,17 +98,20 @@ export class CategoriesService {
       throw new NotFoundException(`Category with ID ${id} not found`);
     }
 
+    const translate = lang && lang !== 'en';
     const shallowChildren = (found.children || []).map((child: any) => ({
       _id: child._id,
-      name: child.name,
+      name: (translate && child.translations?.[lang]) ? child.translations[lang] : child.name,
       isActive: child.isActive,
+      icon: child.icon,
       childrenCount: Array.isArray(child.children) ? child.children.length : 0,
       ...(child.eco && { eco: child.eco }),
       ...(child.pgn && { pgn: child.pgn }),
       ...(child.tags?.length && { tags: child.tags }),
     }));
 
-    return { result: shallowChildren, parentName: found.name };
+    const parentName = (translate && found.translations?.[lang]) ? found.translations[lang] : found.name;
+    return { result: shallowChildren, parentName };
   }
 
   async getById(id: string): Promise<ICategory> {
@@ -647,13 +673,13 @@ export class CategoriesService {
    * Find categories by their IDs anywhere in the tree.
    * Returns lightweight objects with _id, name, and breadcrumb path.
    */
-  async findByIds(ids: string[]): Promise<{ result: { _id: string; name: string; breadcrumb: string; childrenCount: number }[] }> {
+  async findByIds(ids: string[]): Promise<{ result: { _id: string; name: string; breadcrumb: string; childrenCount: number; icon?: string }[] }> {
     if (!ids || ids.length === 0) {
       return { result: [] };
     }
 
     const idSet = new Set(ids.map(String));
-    const found: { _id: string; name: string; breadcrumb: string; childrenCount: number }[] = [];
+    const found: { _id: string; name: string; breadcrumb: string; childrenCount: number; icon?: string }[] = [];
 
     const allRoots = await this.categoryModel.find().lean();
 
@@ -667,6 +693,7 @@ export class CategoriesService {
             name: cat.name || '',
             breadcrumb: currentPath.join(' > '),
             childrenCount: Array.isArray(cat.children) ? cat.children.length : 0,
+            icon: cat.icon,
           });
         }
         if (cat.children?.length) {
@@ -683,6 +710,7 @@ export class CategoriesService {
           name: root.name || '',
           breadcrumb: root.name || '',
           childrenCount: Array.isArray((root as any).children) ? (root as any).children.length : 0,
+          icon: (root as any).icon,
         });
       }
       if ((root as any).children?.length) {
@@ -705,6 +733,7 @@ export class CategoriesService {
             name: cat.name,
             eco: cat.eco,
             tags: cat.tags,
+            icon: cat.icon,
             childrenCount: Array.isArray(cat.children) ? cat.children.length : 0,
             isActive: cat.isActive,
           });

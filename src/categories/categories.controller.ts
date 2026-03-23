@@ -72,8 +72,8 @@ export class CategoriesController {
 
   @Get(':id/shallow-children')
   @ApiOperation({ summary: 'Get shallow children for lazy-loaded navigation (issue #80)' })
-  async getShallowChildren(@Param('id') id: string) {
-    return this.categoriesService.getShallowChildren(id);
+  async getShallowChildren(@Param('id') id: string, @Query('lang') lang?: string) {
+    return this.categoriesService.getShallowChildren(id, lang);
   }
 
   @Get(':id/ai-config')

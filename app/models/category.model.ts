@@ -106,6 +106,7 @@ export interface ICategory {
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];  // Menu items visible to users with this category
   tags?: string[];
+  icon?: string;
   eco?: string;
   pgn?: string;
   $getAllSubdocs: () => any[];
@@ -198,6 +199,7 @@ const CategorySchema = new Schema<ICategory>(
       }
     ],
     tags: [{ type: String }],
+    icon: { type: String },
     eco: { type: String },
     pgn: { type: String },
   },
@@ -232,6 +234,7 @@ export class Category implements ICategory {
   aiConfig?: AiConfig;
   visibleMenuItems?: MenuItemConfig[];
   tags?: string[];
+  icon?: string;
   eco?: string;
   pgn?: string;
 
@@ -251,6 +254,7 @@ export class Category implements ICategory {
     this.aiConfig = data.aiConfig;
     this.visibleMenuItems = data.visibleMenuItems || [];
     this.tags = data.tags || [];
+    this.icon = data.icon;
     this.eco = data.eco;
     this.pgn = data.pgn;
   }
