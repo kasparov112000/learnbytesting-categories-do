@@ -98,6 +98,9 @@ export interface ICategory {
   tags?: string[];
   eco?: string;
   pgn?: string;
+  isSymbolic?: boolean;
+  linkedCategoryId?: string;
+  linkedCategoryIds?: string[];
 }
 
 export const CategorySchema = new Schema<ICategory>(
@@ -196,6 +199,9 @@ export const CategorySchema = new Schema<ICategory>(
     tags: [{ type: String }],
     eco: { type: String },
     pgn: { type: String },
+    isSymbolic: { type: Boolean, default: false },
+    linkedCategoryId: { type: Schema.Types.Mixed },
+    linkedCategoryIds: [{ type: Schema.Types.Mixed }],
   },
   {
     timestamps: true,
@@ -209,3 +215,4 @@ CategorySchema.index({ parent: 1 });
 CategorySchema.index({ isActive: 1 });
 CategorySchema.index({ eco: 1 }, { sparse: true });
 CategorySchema.index({ tags: 1 }, { sparse: true });
+CategorySchema.index({ isSymbolic: 1 }, { sparse: true });

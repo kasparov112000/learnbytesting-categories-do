@@ -59,6 +59,9 @@ export class CategoriesService {
                 isActive: '$$child.isActive',
                 icon: '$$child.icon',
                 childrenCount: { $size: { $ifNull: ['$$child.children', []] } },
+                isSymbolic: '$$child.isSymbolic',
+                linkedCategoryId: '$$child.linkedCategoryId',
+                linkedCategoryIds: '$$child.linkedCategoryIds',
               },
             },
           },
@@ -108,6 +111,9 @@ export class CategoriesService {
       ...(child.eco && { eco: child.eco }),
       ...(child.pgn && { pgn: child.pgn }),
       ...(child.tags?.length && { tags: child.tags }),
+      ...(child.isSymbolic && { isSymbolic: child.isSymbolic }),
+      ...(child.linkedCategoryId && { linkedCategoryId: child.linkedCategoryId }),
+      ...(child.linkedCategoryIds?.length && { linkedCategoryIds: child.linkedCategoryIds }),
     }));
 
     const parentName = (translate && found.translations?.[lang]) ? found.translations[lang] : found.name;
@@ -339,10 +345,39 @@ export class CategoriesService {
     };
 
     // Add to parent's children array
-    await this.categoryModel.findByIdAndUpdate(
-      parent._id,
+    // Try root-level first, then handle nested parents
+    const rootResult = await this.categoryModel.findByIdAndUpdate(
+      this.coerceId(parentId),
       { $push: { children: newChild } },
     );
+
+    if (!rootResult) {
+      // Parent is nested — find the root document that contains it and update in-place
+      this.logger.log(`Parent ${parentId} is nested, searching root document...`);
+      for (const root of allCategories) {
+        const addChild = (children: any[]): boolean => {
+          for (const child of children) {
+            if (String(child._id) === String(parentId)) {
+              if (!child.children) child.children = [];
+              child.children.push(newChild);
+              return true;
+            }
+            if (child.children?.length && addChild(child.children)) return true;
+          }
+          return false;
+        };
+
+        const rootChildren = JSON.parse(JSON.stringify(root.children || []));
+        if (addChild(rootChildren)) {
+          await this.categoryModel.findByIdAndUpdate(
+            root._id,
+            { $set: { children: rootChildren } },
+          );
+          this.logger.log(`Added child to nested parent inside root: ${root.name}`);
+          break;
+        }
+      }
+    }
 
     return { success: true, existed: false, category: newChild };
   }
@@ -790,5 +825,52 @@ export class CategoriesService {
     }
 
     throw new NotFoundException(`Category with ID ${id} not found`);
+  }
+
+  /**
+   * Resolve a symbolic category into the real category IDs it links to.
+   * Collects linkedCategoryId from all children of the symbolic parent.
+   */
+  async resolveSymbolic(id: string): Promise<{ categoryId: string; name: string; isSymbolic: boolean; linkedCategoryIds: string[]; children: { name: string; linkedCategoryId: string }[] }> {
+    const allCategories = await this.categoryModel.find().lean();
+    const found = this.treeService.findInTree(allCategories, id);
+
+    if (!found) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+
+    if (!found.isSymbolic) {
+      throw new BadRequestException(`Category ${id} is not symbolic`);
+    }
+
+    // Collect linkedCategoryId from children
+    const linkedIds: string[] = [];
+    const childLinks: { name: string; linkedCategoryId: string }[] = [];
+
+    for (const child of (found.children || []) as any[]) {
+      if (child.linkedCategoryId) {
+        const linkedId = String(child.linkedCategoryId);
+        linkedIds.push(linkedId);
+        childLinks.push({ name: child.name, linkedCategoryId: linkedId });
+      }
+    }
+
+    // Also include any linkedCategoryIds stored directly on the parent
+    if (found.linkedCategoryIds?.length) {
+      for (const lid of found.linkedCategoryIds) {
+        const lidStr = String(lid);
+        if (!linkedIds.includes(lidStr)) {
+          linkedIds.push(lidStr);
+        }
+      }
+    }
+
+    return {
+      categoryId: String(found._id),
+      name: found.name,
+      isSymbolic: true,
+      linkedCategoryIds: linkedIds,
+      children: childLinks,
+    };
   }
 }

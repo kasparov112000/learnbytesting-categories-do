@@ -70,6 +70,12 @@ export class CategoriesController {
     return this.categoriesService.searchOpenings(q, limit ? parseInt(limit, 10) : undefined);
   }
 
+  @Get(':id/resolve-symbolic')
+  @ApiOperation({ summary: 'Resolve a symbolic category into its linked real category IDs' })
+  async resolveSymbolic(@Param('id') id: string) {
+    return this.categoriesService.resolveSymbolic(id);
+  }
+
   @Get(':id/shallow-children')
   @ApiOperation({ summary: 'Get shallow children for lazy-loaded navigation (issue #80)' })
   async getShallowChildren(@Param('id') id: string, @Query('lang') lang?: string) {
