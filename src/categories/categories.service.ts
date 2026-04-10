@@ -708,31 +708,33 @@ export class CategoriesService {
    * Find categories by their IDs anywhere in the tree.
    * Returns lightweight objects with _id, name, and breadcrumb path.
    */
-  async findByIds(ids: string[]): Promise<{ result: { _id: string; name: string; breadcrumb: string; childrenCount: number; icon?: string }[] }> {
+  async findByIds(ids: string[]): Promise<{ result: { _id: string; name: string; breadcrumb: string; breadcrumbPath: Array<{ _id: string; name: string }>; childrenCount: number; icon?: string }[] }> {
     if (!ids || ids.length === 0) {
       return { result: [] };
     }
 
     const idSet = new Set(ids.map(String));
-    const found: { _id: string; name: string; breadcrumb: string; childrenCount: number; icon?: string }[] = [];
+    const found: { _id: string; name: string; breadcrumb: string; breadcrumbPath: Array<{ _id: string; name: string }>; childrenCount: number; icon?: string }[] = [];
 
     const allRoots = await this.categoryModel.find().lean();
 
-    const walk = (cats: any[], path: string[]) => {
+    const walk = (cats: any[], path: string[], pathObjs: Array<{ _id: string; name: string }>) => {
       for (const cat of cats || []) {
         const catId = cat._id ? String(cat._id) : '';
         const currentPath = [...path, cat.name || ''];
+        const currentPathObjs = [...pathObjs, { _id: catId, name: cat.name || '' }];
         if (catId && idSet.has(catId)) {
           found.push({
             _id: catId,
             name: cat.name || '',
             breadcrumb: currentPath.join(' > '),
+            breadcrumbPath: currentPathObjs.slice(0, -1), // ancestors only (excl. self)
             childrenCount: Array.isArray(cat.children) ? cat.children.length : 0,
             icon: cat.icon,
           });
         }
         if (cat.children?.length) {
-          walk(cat.children, currentPath);
+          walk(cat.children, currentPath, currentPathObjs);
         }
       }
     };
@@ -744,12 +746,13 @@ export class CategoriesService {
           _id: rootId,
           name: root.name || '',
           breadcrumb: root.name || '',
+          breadcrumbPath: [],
           childrenCount: Array.isArray((root as any).children) ? (root as any).children.length : 0,
           icon: (root as any).icon,
         });
       }
       if ((root as any).children?.length) {
-        walk((root as any).children, [root.name || '']);
+        walk((root as any).children, [root.name || ''], [{ _id: rootId, name: root.name || '' }]);
       }
     }
 

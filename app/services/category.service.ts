@@ -900,17 +900,18 @@ export class CategoryService extends DbMicroServiceBase {
       const { CategoryModel } = require('../models/category.model');
       const allRoots = await CategoryModel.find({}).lean();
       const idSet = new Set(ids.map(String));
-      const found: { _id: string; name: string; breadcrumb: string }[] = [];
+      const found: { _id: string; name: string; breadcrumb: string; breadcrumbPath: Array<{ _id: string; name: string }> }[] = [];
 
-      const walk = (cats: any[], path: string[]) => {
+      const walk = (cats: any[], path: string[], pathObjs: Array<{ _id: string; name: string }>) => {
         for (const cat of (cats || [])) {
           const catId = cat._id ? String(cat._id) : '';
           const currentPath = [...path, cat.name || ''];
+          const currentPathObjs = [...pathObjs, { _id: catId, name: cat.name || '' }];
           if (catId && idSet.has(catId)) {
-            found.push({ _id: catId, name: cat.name || '', breadcrumb: currentPath.join(' > ') });
+            found.push({ _id: catId, name: cat.name || '', breadcrumb: currentPath.join(' > '), breadcrumbPath: currentPathObjs.slice(0, -1) });
           }
           if (cat.children?.length) {
-            walk(cat.children, currentPath);
+            walk(cat.children, currentPath, currentPathObjs);
           }
         }
       };
@@ -918,10 +919,10 @@ export class CategoryService extends DbMicroServiceBase {
       for (const root of allRoots) {
         const rootId = root._id ? String(root._id) : '';
         if (rootId && idSet.has(rootId)) {
-          found.push({ _id: rootId, name: root.name || '', breadcrumb: root.name || '' });
+          found.push({ _id: rootId, name: root.name || '', breadcrumb: root.name || '', breadcrumbPath: [] });
         }
         if (root.children?.length) {
-          walk(root.children, [root.name || '']);
+          walk(root.children, [root.name || ''], [{ _id: rootId, name: root.name || '' }]);
         }
       }
 
